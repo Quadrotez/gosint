@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Dark theme (default) ── */
+:root {
+  --bg-main: #0a0c0f;
+  --bg-card: #111318;
+  --bg-secondary: #181c24;
+  --border: #1e2330;
+  --border-light: #262d3d;
+  --border-hover: #3a4460;
+  --text-primary: #e8edf5;
+  --text-secondary: #c8d0de;
+  --text-muted: #4a5568;
+  --accent: #00d4ff;
+  --accent-dim: #00d4ff18;
+}
+
+/* ── Light theme ── */
+html.theme-light {
+  --bg-main: #f0f2f5;
+  --bg-card: #ffffff;
+  --bg-secondary: #f5f7fa;
+  --border: #e2e8f0;
+  --border-light: #cbd5e0;
+  --border-hover: #a0aec0;
+  --text-primary: #1a202c;
+  --text-secondary: #2d3748;
+  --text-muted: #718096;
+  --accent: #0095b8;
+  --accent-dim: #0095b818;
+}
+
+html.theme-light body,
+html.theme-light #root {
+  background: #f0f2f5;
+  color: #1a202c;
+}
+
+html.theme-light ::-webkit-scrollbar-track { background: #f0f2f5; }
+html.theme-light ::-webkit-scrollbar-thumb { background: #cbd5e0; }
+html.theme-light ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+html.theme-light select option { background: #ffffff; color: #1a202c; }
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-main);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-card);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
