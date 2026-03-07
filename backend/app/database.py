@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./osint.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/gosint.db")
 
 engine = create_engine(
     DATABASE_URL,
