@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
-from .. import crud, schemas
+from .. import crud, schemas, models
+from ..deps import get_current_user
 
 router = APIRouter(prefix="/import", tags=["import"])
 
 
 @router.post("/csv", response_model=List[schemas.EntityOut])
-async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
 
@@ -43,7 +44,7 @@ async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         if extra:
             metadata = {**(metadata or {}), **extra}
 
-        entity = crud.create_entity(db, schemas.EntityCreate(type=type_, value=value, metadata=metadata))
+        entity = crud.create_entity(db, schemas.EntityCreate(type=type_, value=value, metadata=metadata), user.id)
         created.append(entity)
 
     return created

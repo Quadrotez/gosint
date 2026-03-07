@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..database import get_db
 from .. import models, schemas, crud
+from ..deps import get_current_user
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 
@@ -57,9 +58,9 @@ def _schema_to_dict(s: models.EntityTypeSchema) -> dict:
 
 
 @router.get("/export")
-def export_backup(db: Session = Depends(get_db)):
+def export_backup(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Export full database as a ZIP archive (data.json + embedded base64 photos)."""
-    entities = db.query(models.Entity).all()
+    entities = db.query(models.Entity).filter(models.Entity.user_id == user.id).all()
     relationships = db.query(models.Relationship).all()
     entity_schemas = db.query(models.EntityTypeSchema).all()
 
@@ -108,7 +109,7 @@ def export_backup(db: Session = Depends(get_db)):
 
 
 @router.post("/import")
-async def import_backup(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_backup(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Import a backup ZIP. Merges entities/relationships by ID (skip existing)."""
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a .zip backup")

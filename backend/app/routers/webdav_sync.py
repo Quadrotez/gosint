@@ -18,6 +18,8 @@ from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
 from .. import models
+from ..deps import get_current_user
+from .. import models
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -175,7 +177,7 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session) -> dict:
 
 
 @router.post("/test")
-def test_connection(cfg: WebDAVConfig):
+def test_connection(cfg: WebDAVConfig, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Test WebDAV connection credentials."""
     opener = _make_opener(cfg.username, cfg.password)
     url = cfg.url.rstrip("/") + "/"
@@ -191,7 +193,7 @@ def test_connection(cfg: WebDAVConfig):
 
 
 @router.post("/push")
-def push_to_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db)):
+def push_to_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Upload current DB backup to WebDAV."""
     zip_bytes = _build_backup_zip(db)
     url = cfg.url.rstrip("/") + "/" + cfg.filename
@@ -209,7 +211,7 @@ def push_to_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db)):
 
 
 @router.post("/pull")
-def pull_from_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db)):
+def pull_from_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Download backup from WebDAV and merge into local DB."""
     url = cfg.url.rstrip("/") + "/" + cfg.filename
     opener = _make_opener(cfg.username, cfg.password)
@@ -229,7 +231,7 @@ def pull_from_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db)):
 
 
 @router.post("/sync")
-def sync_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db)):
+def sync_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """Bidirectional sync: pull from WebDAV (merge), then push updated DB back."""
     pull_result = {"skipped": 0, "entities": 0, "relationships": 0, "schemas": 0}
 

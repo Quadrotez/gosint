@@ -24,23 +24,41 @@ export default function MiniGraph({ entityId, depth = 2 }: Props) {
   useEffect(() => {
     if (!containerRef.current || !data) return;
 
-    if (cyRef.current) cyRef.current.destroy();
+    cyRef.current?.destroy();
+    cyRef.current = null;
+
+    // Guard: collect valid node ids then filter edges so Cytoscape never gets
+    // an edge referencing a node that isn't in the dataset.
+    const nodeIds = new Set(data.nodes.map(n => n.id));
+    const safeEdges = data.edges.filter(
+      e => nodeIds.has(e.source) && nodeIds.has(e.target) && e.source !== e.target,
+    );
+
+    const elements: cytoscape.ElementDefinition[] = [
+      ...data.nodes.map(n => {
+        const photo = (n.metadata as Record<string, string> | null)?.photo ?? null;
+        return {
+          data: {
+            id: n.id,
+            label: n.value.length > 14 ? n.value.slice(0, 14) + '…' : n.value,
+            color: getEntityColor(n.type, schemas),
+            isRoot: n.id === entityId,
+            photo,
+          },
+        };
+      }),
+      ...safeEdges.map(e => ({
+        data: { id: e.id, source: e.source, target: e.target, label: e.type },
+      })),
+    ];
+
+    const nodesWithPhoto = data.nodes
+      .filter(n => (n.metadata as Record<string, string> | null)?.photo)
+      .map(n => n.id);
 
     cyRef.current = cytoscape({
       container: containerRef.current,
-      elements: [
-        ...data.nodes.map(n => ({
-          data: {
-            id: n.id,
-            label: n.value.length > 15 ? n.value.slice(0, 15) + '…' : n.value,
-            color: getEntityColor(n.type, schemas),
-            isRoot: n.id === entityId,
-          },
-        })),
-        ...data.edges.map(e => ({
-          data: { id: e.id, source: e.source, target: e.target, label: e.type },
-        })),
-      ],
+      elements,
       style: [
         {
           selector: 'node',
@@ -52,18 +70,28 @@ export default function MiniGraph({ entityId, depth = 2 }: Props) {
             'font-size': '9px',
             'text-valign': 'bottom',
             'text-margin-y': 4,
-            'width': 24,
-            'height': 24,
+            'width': 28,
+            'height': 28,
             'border-width': 0,
           },
         },
+        // Nodes with photos: show the photo as background image
+        ...(nodesWithPhoto.length > 0 ? [{
+          selector: nodesWithPhoto.map(id => `node[id="${id}"]`).join(', '),
+          style: {
+            'background-image': 'data(photo)',
+            'background-fit': 'cover' as const,
+            'border-width': 2,
+            'border-color': '#60a5fa',
+          },
+        }] : []),
         {
           selector: 'node[?isRoot]',
           style: {
-            'width': 32,
-            'height': 32,
+            'width': 36,
+            'height': 36,
             'border-width': 2,
-            'border-color': '#ffffff40',
+            'border-color': '#4a90e2',  // use solid hex, not rgba
           },
         },
         {
@@ -84,7 +112,7 @@ export default function MiniGraph({ entityId, depth = 2 }: Props) {
           },
         },
       ],
-      layout: { name: 'cose', animate: false, padding: 20 },
+      layout: { name: 'cose', animate: false, padding: 20 } as cytoscape.LayoutOptions,
       userZoomingEnabled: true,
       userPanningEnabled: true,
       boxSelectionEnabled: false,

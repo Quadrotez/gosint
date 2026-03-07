@@ -99,3 +99,45 @@ export interface StatsData {
   entities_by_type: Record<string, number>;
   recent_entities: Entity[];
 }
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  username: string;
+  email?: string | null;
+  is_admin: boolean;
+  is_active: boolean;
+  session_lifetime_hours: number;
+  memory_limit_mb?: number | null;
+  created_at: string;
+  last_login?: string | null;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface StorageInfo {
+  used_bytes: number;
+  used_mb: number;
+  limit_mb: number;
+  percent: number;
+}
+
+export interface SiteSettings {
+  default_language: string;
+  default_memory_limit_mb: number;
+  site_icon_b64?: string | null;
+  site_title: string;
+  registration_enabled: boolean;
+  max_accounts_per_ip: number;
+}
+
+export interface AdminUser extends User {
+  storage_bytes: number;
+  storage_mb: number;
+  registration_ip?: string | null;
+}

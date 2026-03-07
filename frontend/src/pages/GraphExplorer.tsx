@@ -87,6 +87,7 @@ export default function GraphExplorer() {
             isRoot: n.id === rootId,
             icon: getIcon(n.type),
             type: n.type,
+            photo: (n.metadata as Record<string, string> | null)?.photo ?? null,
           },
         })),
         ...edges.map(e => ({
@@ -113,6 +114,15 @@ export default function GraphExplorer() {
             'text-wrap': 'none',
           } as any,
         },
+        ...(nodes.some(n => (n.metadata as Record<string, string> | null)?.photo)
+          ? [{
+              selector: nodes.filter(n => (n.metadata as Record<string, string> | null)?.photo).map(n => `node[id="${n.id}"]`).join(', '),
+              style: {
+                'background-image': 'data(photo)',
+                'background-fit': 'cover' as const,
+              },
+            }]
+          : []),
         {
           selector: 'node[?isRoot]',
           style: {
