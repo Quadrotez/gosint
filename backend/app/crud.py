@@ -5,15 +5,37 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from . import models, schemas
+from .encryption import derive_key, encrypt_field, decrypt_field, is_encrypted, reencrypt_field
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Encryption helpers ─────────────────────────────────────────────────────────
 
-def _entity_out(e: models.Entity) -> schemas.EntityOut:
+def _get_enc_key(user: models.User) -> Optional[bytes]:
+    """Return AES key for user, or None if encryption not yet initialised."""
+    if not user.enc_salt:
+        return None
+    return derive_key(user.password_hash, user.enc_salt)
+
+
+def _enc(key: Optional[bytes], value: Optional[str]) -> Optional[str]:
+    return encrypt_field(key, value) if (key and value) else value
+
+
+def _dec(key: Optional[bytes], value: Optional[str]) -> Optional[str]:
+    return decrypt_field(key, value) if (key and value) else value
+
+
+# ── Serialisation helpers ─────────────────────────────────────────────────────
+
+def _entity_out(e: models.Entity, key: Optional[bytes] = None) -> schemas.EntityOut:
+    raw_value = _dec(key, e.value)
+    raw_meta  = _dec(key, e.metadata_)
+    raw_notes = _dec(key, e.notes)
     return schemas.EntityOut(
-        id=e.id, type=e.type, value=e.value,
-        metadata=json.loads(e.metadata_) if e.metadata_ else None,
-        notes=e.notes,
+        id=e.id, type=e.type,
+        value=raw_value,
+        metadata=json.loads(raw_meta) if raw_meta else None,
+        notes=raw_notes,
         canvas_layout=json.loads(e.canvas_layout) if e.canvas_layout else None,
         created_at=e.created_at,
     )
@@ -52,8 +74,8 @@ def get_user_storage_bytes(db: Session, user_id: str) -> int:
 def get_user_effective_limit_mb(db: Session, user: models.User) -> int:
     if user.memory_limit_mb is not None:
         return user.memory_limit_mb
-    settings = db.query(models.SiteSettings).filter(models.SiteSettings.id == "main").first()
-    return settings.default_memory_limit_mb if settings else 512
+    s = db.query(models.SiteSettings).filter(models.SiteSettings.id == "main").first()
+    return s.default_memory_limit_mb if s else 512
 
 
 def check_storage_limit(db: Session, user: models.User) -> None:
@@ -94,9 +116,9 @@ def update_entity_type_schema(db: Session, schema_id: str, data: schemas.EntityT
         return None
     if data.label_en is not None: s.label_en = data.label_en
     if data.label_ru is not None: s.label_ru = data.label_ru
-    if data.icon is not None: s.icon = data.icon
-    if data.color is not None: s.color = data.color
-    if data.fields is not None: s.fields = json.dumps([f.model_dump() for f in data.fields])
+    if data.icon is not None:     s.icon = data.icon
+    if data.color is not None:    s.color = data.color
+    if data.fields is not None:   s.fields = json.dumps([f.model_dump() for f in data.fields])
     db.commit(); db.refresh(s)
     return _schema_out(s)
 
@@ -116,46 +138,59 @@ def delete_entity_type_schema(db: Session, schema_id: str, user_id: str) -> bool
 # ── Entities ──────────────────────────────────────────────────────────────────
 
 def get_entities(db: Session, user_id: str, skip: int = 0, limit: int = 100, type_filter: Optional[str] = None) -> List[schemas.EntityOut]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     q = db.query(models.Entity).filter(models.Entity.user_id == user_id)
     if type_filter:
         q = q.filter(models.Entity.type == type_filter)
-    return [_entity_out(e) for e in q.order_by(models.Entity.created_at.desc()).offset(skip).limit(limit)]
+    return [_entity_out(e, key) for e in q.order_by(models.Entity.created_at.desc()).offset(skip).limit(limit)]
 
 
 def get_entity(db: Session, entity_id: str, user_id: str) -> Optional[schemas.EntityOut]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     e = db.query(models.Entity).filter(
         models.Entity.id == entity_id,
         models.Entity.user_id == user_id,
     ).first()
-    return _entity_out(e) if e else None
+    return _entity_out(e, key) if e else None
 
 
 def create_entity(db: Session, data: schemas.EntityCreate, user_id: str) -> schemas.EntityOut:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     e = models.Entity(
         id=str(uuid.uuid4()), user_id=user_id,
-        type=data.type, value=data.value,
-        metadata_=json.dumps(data.metadata) if data.metadata else None,
-        notes=data.notes,
+        type=data.type,
+        value=_enc(key, data.value),
+        metadata_=_enc(key, json.dumps(data.metadata)) if data.metadata else None,
+        notes=_enc(key, data.notes) if data.notes else None,
         canvas_layout=json.dumps(data.canvas_layout) if data.canvas_layout else None,
         created_at=datetime.utcnow(),
     )
     db.add(e); db.commit(); db.refresh(e)
-    return _entity_out(e)
+    return _entity_out(e, key)
 
 
 def update_entity(db: Session, entity_id: str, data: schemas.EntityUpdate, user_id: str) -> Optional[schemas.EntityOut]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     e = db.query(models.Entity).filter(
         models.Entity.id == entity_id,
         models.Entity.user_id == user_id,
     ).first()
     if not e:
         return None
-    if data.value is not None: e.value = data.value
-    if data.metadata is not None: e.metadata_ = json.dumps(data.metadata)
-    if data.notes is not None: e.notes = data.notes
-    if data.canvas_layout is not None: e.canvas_layout = json.dumps(data.canvas_layout)
+    if data.value is not None:
+        e.value = _enc(key, data.value)
+    if data.metadata is not None:
+        e.metadata_ = _enc(key, json.dumps(data.metadata))
+    if data.notes is not None:
+        e.notes = _enc(key, data.notes) if data.notes else None
+    if data.canvas_layout is not None:
+        e.canvas_layout = json.dumps(data.canvas_layout)
     db.commit(); db.refresh(e)
-    return _entity_out(e)
+    return _entity_out(e, key)
 
 
 def delete_entity(db: Session, entity_id: str, user_id: str) -> bool:
@@ -170,19 +205,40 @@ def delete_entity(db: Session, entity_id: str, user_id: str) -> bool:
 
 
 def search_entities(db: Session, query: str, user_id: str, limit: int = 50) -> List[schemas.EntityOut]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
+
+    # SQL search works on encrypted column too (catches type matches + unencrypted legacy rows)
     rows = db.query(models.Entity).filter(
         models.Entity.user_id == user_id,
         or_(
             models.Entity.value.ilike(f"%{query}%"),
             models.Entity.type.ilike(f"%{query}%"),
         ),
-    ).limit(limit).all()
-    return [_entity_out(e) for e in rows]
+    ).all()
+
+    # For encrypted users also scan by decrypting (brute-force over all rows)
+    if key is not None:
+        found_ids = {e.id for e in rows}
+        q_lower = query.lower()
+        all_rows = db.query(models.Entity).filter(models.Entity.user_id == user_id).all()
+        for e in all_rows:
+            if e.id in found_ids:
+                continue
+            try:
+                if q_lower in decrypt_field(key, e.value).lower():
+                    rows.append(e)
+            except Exception:
+                pass
+
+    return [_entity_out(e, key) for e in rows[:limit]]
 
 
 # ── Relationships ─────────────────────────────────────────────────────────────
 
 def get_entity_relationships(db: Session, entity_id: str, user_id: str) -> List[schemas.RelationshipWithEntities]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     rels = db.query(models.Relationship).filter(
         models.Relationship.user_id == user_id,
         or_(
@@ -192,12 +248,14 @@ def get_entity_relationships(db: Session, entity_id: str, user_id: str) -> List[
     ).all()
     return [
         schemas.RelationshipWithEntities(
-            id=r.id, source_entity_id=r.source_entity_id, target_entity_id=r.target_entity_id,
+            id=r.id,
+            source_entity_id=r.source_entity_id,
+            target_entity_id=r.target_entity_id,
             type=r.type,
             metadata=json.loads(r.metadata_) if r.metadata_ else None,
             created_at=r.created_at,
-            source_entity=_entity_out(r.source_entity) if r.source_entity else None,
-            target_entity=_entity_out(r.target_entity) if r.target_entity else None,
+            source_entity=_entity_out(r.source_entity, key) if r.source_entity else None,
+            target_entity=_entity_out(r.target_entity, key) if r.target_entity else None,
         )
         for r in rels
     ]
@@ -230,6 +288,8 @@ def delete_relationship(db: Session, rel_id: str, user_id: str) -> bool:
 # ── Graph ─────────────────────────────────────────────────────────────────────
 
 def get_entity_graph(db: Session, entity_id: str, user_id: str, depth: int = 2) -> schemas.GraphResponse:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     visited_nodes: dict = {}
     visited_edges: dict = {}
     to_visit = [entity_id]
@@ -258,12 +318,12 @@ def get_entity_graph(db: Session, entity_id: str, user_id: str, depth: int = 2) 
                         next_visit.append(neighbor_id)
         to_visit = next_visit
 
-    # CRITICAL: only include edges where BOTH endpoints are in the visited set
     node_ids = set(visited_nodes.keys())
     nodes = [
         schemas.GraphNode(
-            id=e.id, type=e.type, value=e.value,
-            metadata=json.loads(e.metadata_) if e.metadata_ else None,
+            id=e.id, type=e.type,
+            value=_dec(key, e.value),
+            metadata=json.loads(_dec(key, e.metadata_)) if e.metadata_ else None,
         )
         for e in visited_nodes.values()
     ]
@@ -278,6 +338,8 @@ def get_entity_graph(db: Session, entity_id: str, user_id: str, depth: int = 2) 
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 def get_stats(db: Session, user_id: str) -> schemas.StatsResponse:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    key = _get_enc_key(user) if user else None
     total_entities = db.query(func.count(models.Entity.id)).filter(models.Entity.user_id == user_id).scalar()
     total_relationships = db.query(func.count(models.Relationship.id)).filter(models.Relationship.user_id == user_id).scalar()
     type_counts = db.query(models.Entity.type, func.count(models.Entity.id)).filter(
@@ -290,5 +352,19 @@ def get_stats(db: Session, user_id: str) -> schemas.StatsResponse:
         total_entities=total_entities,
         total_relationships=total_relationships,
         entities_by_type={t: c for t, c in type_counts},
-        recent_entities=[_entity_out(e) for e in recent],
+        recent_entities=[_entity_out(e, key) for e in recent],
     )
+
+
+# ── Re-encryption on password change ─────────────────────────────────────────
+
+def reencrypt_user_data(db: Session, user: models.User, old_key: Optional[bytes], new_key: bytes) -> None:
+    """Re-encrypt all entity sensitive fields after password change."""
+    for e in db.query(models.Entity).filter(models.Entity.user_id == user.id).all():
+        if e.value:
+            e.value = reencrypt_field(old_key, new_key, e.value)
+        if e.metadata_:
+            e.metadata_ = reencrypt_field(old_key, new_key, e.metadata_)
+        if e.notes:
+            e.notes = reencrypt_field(old_key, new_key, e.notes)
+    db.commit()

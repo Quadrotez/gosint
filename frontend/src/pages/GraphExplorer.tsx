@@ -18,12 +18,14 @@ function personDisplayName(e: Entity): string {
 export default function GraphExplorer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useLang();
   const { getColor, getIcon, getLabel, allTypeNames, schemas } = useEntitySchemas();
 
-  const [rootId, setRootId] = useState<string>(searchParams.get('focus') || '');
+  // BUG FIX: rootId is derived from searchParams on every render, not stored separately.
+  // This ensures navigation between entities (via URL) always triggers a fresh graph render.
+  const rootId = searchParams.get('focus') || '';
   const [depth, setDepth] = useState(2);
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [entitySearch, setEntitySearch] = useState('');
@@ -47,9 +49,16 @@ export default function GraphExplorer() {
     return name.toLowerCase().includes(q) || e.type.toLowerCase().includes(q);
   });
 
+  // Cytoscape setup — re-runs when graphData, filters, or schemas change.
+  // The container div is ALWAYS mounted so containerRef is always valid.
   useEffect(() => {
     if (!containerRef.current || !graphData) return;
-    if (cyRef.current) cyRef.current.destroy();
+
+    // Destroy previous instance before creating new one
+    if (cyRef.current) {
+      cyRef.current.destroy();
+      cyRef.current = null;
+    }
 
     const isDark = !document.documentElement.classList.contains('theme-light');
     const nodeBg = isDark ? '#1a2035' : '#f0f4ff';
@@ -63,7 +72,6 @@ export default function GraphExplorer() {
     const nodes = filterTypes.length > 0
       ? graphData.nodes.filter(n => filterTypes.includes(n.type))
       : graphData.nodes;
-
     const nodeIds = new Set(nodes.map(n => n.id));
     const edges = graphData.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
@@ -116,7 +124,9 @@ export default function GraphExplorer() {
         },
         ...(nodes.some(n => (n.metadata as Record<string, string> | null)?.photo)
           ? [{
-              selector: nodes.filter(n => (n.metadata as Record<string, string> | null)?.photo).map(n => `node[id="${n.id}"]`).join(', '),
+              selector: nodes
+                .filter(n => (n.metadata as Record<string, string> | null)?.photo)
+                .map(n => `node[id="${n.id}"]`).join(', '),
               style: {
                 'background-image': 'data(photo)',
                 'background-fit': 'cover' as const,
@@ -164,7 +174,7 @@ export default function GraphExplorer() {
         },
       ],
       layout: {
-        name: nodes.length > 15 ? 'cose' : 'cose',
+        name: 'cose',
         animate: nodes.length < 30,
         animationDuration: 400,
         padding: 40,
@@ -184,15 +194,17 @@ export default function GraphExplorer() {
     });
 
     cyRef.current.on('dblclick', 'node', (e) => {
-      setRootId(e.target.id());
+      setSearchParams({ focus: e.target.id() });
     });
 
-    // Fit after layout
     cyRef.current.one('layoutstop', () => {
       cyRef.current?.fit(undefined, 40);
     });
 
-    return () => { cyRef.current?.destroy(); cyRef.current = null; };
+    return () => {
+      cyRef.current?.destroy();
+      cyRef.current = null;
+    };
   }, [graphData, filterTypes, rootId, schemas]);
 
   const toggleTypeFilter = (type: string) => {
@@ -201,17 +213,20 @@ export default function GraphExplorer() {
     );
   };
 
+  const selectEntity = (id: string) => {
+    setSearchParams({ focus: id });
+    setSidebarOpen(false);
+  };
+
   const nodeCount = graphData?.nodes.length ?? 0;
   const edgeCount = graphData?.edges.length ?? 0;
 
   return (
     <div className="flex h-full relative" style={{ background: 'var(--bg-main)' }}>
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="sm:hidden fixed inset-0 bg-black/50 z-10" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar toggle button (mobile) */}
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
@@ -229,7 +244,6 @@ export default function GraphExplorer() {
         fixed sm:relative z-20 sm:z-auto
         w-64 h-full flex-shrink-0 flex flex-col border-r transition-transform duration-200
       `} style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-        {/* Close button (mobile) */}
         <button onClick={() => setSidebarOpen(false)}
           className="sm:hidden absolute right-2 top-2 w-7 h-7 flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           <ChevronLeft size={16} />
@@ -256,7 +270,7 @@ export default function GraphExplorer() {
               return (
                 <button
                   key={e.id}
-                  onClick={() => { setRootId(e.id); setSidebarOpen(false); }}
+                  onClick={() => selectEntity(e.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
                   style={{
                     background: isActive ? 'var(--border)' : undefined,
@@ -280,7 +294,7 @@ export default function GraphExplorer() {
             <span className="text-sm font-mono" style={{ color: 'var(--accent)' }}>{depth}</span>
           </div>
           <input type="range" min={1} max={5} value={depth} onChange={e => setDepth(Number(e.target.value))}
-            className="w-full accent-[var(--accent)]" style={{ accentColor: 'var(--accent)' } as any} />
+            className="w-full" style={{ accentColor: 'var(--accent)' } as any} />
         </div>
 
         <div className="p-4 flex-1 overflow-y-auto">
@@ -310,22 +324,30 @@ export default function GraphExplorer() {
         )}
       </div>
 
-      {/* Graph canvas */}
+      {/* Graph canvas — always mounted so containerRef is always valid */}
       <div className="flex-1 relative min-w-0">
-        {!rootId ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+        {/* Empty state overlay */}
+        {!rootId && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 pointer-events-none z-10">
             <div className="text-5xl mb-4">🔭</div>
             <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>{t.graph_empty}</p>
             <p className="text-xs font-mono mt-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{t.graph_empty_hint}</p>
           </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-full">
+        )}
+
+        {/* Loading overlay — does NOT unmount the canvas div */}
+        {rootId && isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'var(--bg-main)', opacity: 0.85 }}>
             <p className="text-sm font-mono animate-pulse" style={{ color: 'var(--text-muted)' }}>{t.graph_loading}</p>
           </div>
-        ) : (
+        )}
+
+        {/* Canvas always in DOM — eliminates containerRef = null race condition */}
+        <div ref={containerRef} className="w-full h-full" />
+
+        {/* Controls */}
+        {rootId && !isLoading && (
           <>
-            <div ref={containerRef} className="w-full h-full" />
-            {/* Controls */}
             <div className="absolute bottom-4 right-4 flex flex-col gap-2">
               {[
                 { icon: <ZoomIn size={14} />, action: () => cyRef.current?.zoom({ level: (cyRef.current?.zoom() ?? 1) * 1.25, renderedPosition: { x: (containerRef.current?.offsetWidth ?? 400) / 2, y: (containerRef.current?.offsetHeight ?? 300) / 2 } }) },

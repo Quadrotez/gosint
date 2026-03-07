@@ -2,57 +2,45 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime
 from ..database import get_db
-from .. import models, schemas
+from .. import models, schemas, crud
 from ..auth import hash_password, verify_password, create_access_token
 from ..deps import get_current_user
-from .. import crud
+from ..encryption import generate_salt, derive_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("X-Forwarded-For")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
 
 
 @router.post("/register", response_model=schemas.TokenResponse, status_code=201)
 def register(request: Request, body: schemas.RegisterRequest, db: Session = Depends(get_db)):
-    # Check site settings
     settings = db.query(models.SiteSettings).filter(models.SiteSettings.id == "main").first()
     if settings and not settings.registration_enabled:
         raise HTTPException(status_code=403, detail="Registration is disabled")
 
-    # Check username uniqueness
     if db.query(models.User).filter(models.User.username == body.username).first():
         raise HTTPException(status_code=409, detail="Username already taken")
+    if body.email and db.query(models.User).filter(models.User.email == body.email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
 
-    # Check email uniqueness
-    if body.email:
-        if db.query(models.User).filter(models.User.email == body.email).first():
-            raise HTTPException(status_code=409, detail="Email already registered")
-
-    # IP limit
-    ip = _get_client_ip(request)
+    ip = _client_ip(request)
     max_per_ip = settings.max_accounts_per_ip if settings else 3
-    ip_count = db.query(models.User).filter(models.User.registration_ip == ip).count()
-    if ip_count >= max_per_ip:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Maximum {max_per_ip} accounts per IP address",
-        )
+    if db.query(models.User).filter(models.User.registration_ip == ip).count() >= max_per_ip:
+        raise HTTPException(status_code=429, detail=f"Maximum {max_per_ip} accounts per IP")
 
+    pw_hash = hash_password(body.password)
     user = models.User(
         username=body.username,
         email=body.email,
-        password_hash=hash_password(body.password),
+        password_hash=pw_hash,
+        enc_salt=generate_salt(),   # ← generate encryption salt on register
         registration_ip=ip,
         session_lifetime_hours=168,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    db.add(user); db.commit(); db.refresh(user)
 
     token = create_access_token(user.id, user.username, user.is_admin, user.session_lifetime_hours)
     return schemas.TokenResponse(access_token=token, user=schemas.UserOut.model_validate(user))
@@ -65,10 +53,8 @@ def login(body: schemas.LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
-
     user.last_login = datetime.utcnow()
     db.commit()
-
     token = create_access_token(user.id, user.username, user.is_admin, user.session_lifetime_hours)
     return schemas.TokenResponse(access_token=token, user=schemas.UserOut.model_validate(user))
 
@@ -84,13 +70,22 @@ def update_me(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Password change requires current password
     if body.password:
         if not body.current_password:
             raise HTTPException(status_code=400, detail="current_password required to change password")
         if not verify_password(body.current_password, current_user.password_hash):
             raise HTTPException(status_code=400, detail="Current password is incorrect")
-        current_user.password_hash = hash_password(body.password)
+
+        old_key = crud._get_enc_key(current_user)
+        new_pw_hash = hash_password(body.password)
+        new_salt = generate_salt()
+
+        current_user.password_hash = new_pw_hash
+        current_user.enc_salt = new_salt
+        db.flush()
+
+        new_key = derive_key(new_pw_hash, new_salt)
+        crud.reencrypt_user_data(db, current_user, old_key, new_key)
 
     if body.username and body.username != current_user.username:
         if db.query(models.User).filter(models.User.username == body.username).first():
@@ -104,11 +99,9 @@ def update_me(
         current_user.email = body.email or None
 
     if body.session_lifetime_hours is not None:
-        val = max(1, min(body.session_lifetime_hours, 8760))  # 1h – 1 year
-        current_user.session_lifetime_hours = val
+        current_user.session_lifetime_hours = max(1, min(body.session_lifetime_hours, 8760))
 
-    db.commit()
-    db.refresh(current_user)
+    db.commit(); db.refresh(current_user)
     return schemas.UserOut.model_validate(current_user)
 
 

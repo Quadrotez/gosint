@@ -24,6 +24,9 @@ class User(Base):
     session_lifetime_hours = Column(Integer, default=168)   # 7 days
     memory_limit_mb = Column(Integer, nullable=True)        # None = use site default
     registration_ip = Column(String(64), nullable=True)
+    # Per-user salt for at-rest encryption key derivation.
+    # NULL → account pre-dates encryption; new data stored as plaintext until pw change.
+    enc_salt = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
