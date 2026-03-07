@@ -5,3 +5,4 @@ osint.db
 docker-compose.yml
 dist/
 gosint.db
+data/
