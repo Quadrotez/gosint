@@ -6,7 +6,7 @@ import { useEntitySchemas } from '../context/EntitySchemasContext';
 import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import { useLang } from '../i18n/LangProvider';
 import cytoscape from 'cytoscape';
-import { Search, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Search, ZoomIn, ZoomOut, Maximize2, ChevronLeft, Sliders } from 'lucide-react';
 import type { Entity } from '../types';
 
 function personDisplayName(e: Entity): string {
@@ -27,6 +27,7 @@ export default function GraphExplorer() {
   const [depth, setDepth] = useState(2);
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [entitySearch, setEntitySearch] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const { data: entities = [] } = useQuery({
     queryKey: ['entities'],
@@ -50,6 +51,15 @@ export default function GraphExplorer() {
     if (!containerRef.current || !graphData) return;
     if (cyRef.current) cyRef.current.destroy();
 
+    const isDark = !document.documentElement.classList.contains('theme-light');
+    const nodeBg = isDark ? '#1a2035' : '#f0f4ff';
+    const nodeText = isDark ? '#e8edf5' : '#1a1f2e';
+    const edgeColor = isDark ? '#2d3650' : '#c0c8e0';
+    const arrowColor = isDark ? '#3a4a6a' : '#8090b8';
+    const edgeLabelColor = isDark ? '#5a6888' : '#8090b8';
+    const bgPanelColor = isDark ? '#0a0c14' : '#f8f9fe';
+    const selectedBorder = '#00d4ff';
+
     const nodes = filterTypes.length > 0
       ? graphData.nodes.filter(n => filterTypes.includes(n.type))
       : graphData.nodes;
@@ -57,17 +67,26 @@ export default function GraphExplorer() {
     const nodeIds = new Set(nodes.map(n => n.id));
     const edges = graphData.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
+    const getNodeLabel = (n: typeof graphData.nodes[0]) => {
+      if (n.type === 'person') {
+        const m = (n.metadata || {}) as Record<string, string>;
+        const p = [m.last_name, m.first_name].filter(Boolean);
+        return (p.join(' ') || n.value).slice(0, 24);
+      }
+      return n.value.slice(0, 24);
+    };
+
     cyRef.current = cytoscape({
       container: containerRef.current,
       elements: [
         ...nodes.map(n => ({
           data: {
             id: n.id,
-            label: (n.type === 'person'
-              ? (() => { const m = (n.metadata || {}) as Record<string,string>; const p = [m.last_name, m.first_name].filter(Boolean); return p.join(' ') || n.value; })()
-              : n.value).slice(0, 20),
+            label: getNodeLabel(n),
             color: getColor(n.type),
             isRoot: n.id === rootId,
+            icon: getIcon(n.type),
+            type: n.type,
           },
         })),
         ...edges.map(e => ({
@@ -78,56 +97,89 @@ export default function GraphExplorer() {
         {
           selector: 'node',
           style: {
-            'background-color': 'data(color)',
+            'shape': 'round-rectangle',
+            'background-color': nodeBg,
+            'border-width': 2,
+            'border-color': 'data(color)',
             'label': 'data(label)',
-            'color': '#e8edf5',
+            'color': nodeText,
             'font-family': 'monospace',
             'font-size': '10px',
-            'text-valign': 'bottom',
-            'text-margin-y': 6,
-            'width': 28,
-            'height': 28,
-          },
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 'label',
+            'height': 32,
+            'padding': '8px',
+            'text-wrap': 'none',
+          } as any,
         },
         {
           selector: 'node[?isRoot]',
-          style: { 'width': 40, 'height': 40, 'border-width': 3, 'border-color': '#00d4ff' },
+          style: {
+            'border-width': 3,
+            'border-color': selectedBorder,
+            'background-color': isDark ? '#0f1a30' : '#e8f0ff',
+            'font-weight': 'bold',
+          } as any,
         },
         {
           selector: 'edge',
           style: {
             'width': 1.5,
-            'line-color': '#262d3d',
-            'target-arrow-color': '#3a4460',
+            'line-color': edgeColor,
+            'target-arrow-color': arrowColor,
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             'label': 'data(label)',
-            'font-size': '8px',
-            'color': '#4a5568',
+            'font-size': '9px',
+            'color': edgeLabelColor,
             'font-family': 'monospace',
-            'text-background-color': '#0a0c0f',
-            'text-background-opacity': 0.9,
-            'text-background-padding': '2px',
-          },
+            'text-background-color': bgPanelColor,
+            'text-background-opacity': 0.85,
+            'text-background-padding': '3px',
+            'text-background-shape': 'round-rectangle',
+          } as any,
         },
         {
           selector: 'node:selected',
-          style: { 'border-width': 2, 'border-color': '#00d4ff' },
+          style: { 'border-color': selectedBorder, 'border-width': 3 } as any,
+        },
+        {
+          selector: 'node:active',
+          style: { 'overlay-opacity': 0.1, 'overlay-color': selectedBorder } as any,
+        },
+        {
+          selector: 'edge:selected',
+          style: { 'line-color': selectedBorder, 'target-arrow-color': selectedBorder } as any,
         },
       ],
       layout: {
-        name: nodes.length > 20 ? 'cose' : 'cose',
-        animate: false,
-        padding: 30,
-      },
+        name: nodes.length > 15 ? 'cose' : 'cose',
+        animate: nodes.length < 30,
+        animationDuration: 400,
+        padding: 40,
+        nodeRepulsion: () => 8000,
+        idealEdgeLength: () => 120,
+        edgeElasticity: () => 0.45,
+        gravity: 0.25,
+        numIter: 1000,
+        coolingFactor: 0.99,
+        minTemp: 1.0,
+      } as any,
+      minZoom: 0.1,
+      maxZoom: 4,
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false,
     });
 
     cyRef.current.on('dblclick', 'node', (e) => {
       setRootId(e.target.id());
     });
 
-    cyRef.current.on('tap', 'node', (e) => {
-      // single tap — no action
+    // Fit after layout
+    cyRef.current.one('layoutstop', () => {
+      cyRef.current?.fit(undefined, 40);
     });
 
     return () => { cyRef.current?.destroy(); cyRef.current = null; };
@@ -143,69 +195,97 @@ export default function GraphExplorer() {
   const edgeCount = graphData?.edges.length ?? 0;
 
   return (
-    <div className="flex h-full bg-[#0a0c0f]">
+    <div className="flex h-full relative" style={{ background: 'var(--bg-main)' }}>
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="sm:hidden fixed inset-0 bg-black/50 z-10" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar toggle button (mobile) */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="absolute left-3 top-3 z-20 sm:hidden w-9 h-9 flex items-center justify-center rounded-lg border"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+        >
+          <Sliders size={16} />
+        </button>
+      )}
+
       {/* Left panel */}
-      <div className="w-64 flex-shrink-0 bg-[#111318] border-r border-[#1e2330] flex flex-col">
-        <div className="p-4 border-b border-[#1e2330]">
-          <div className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-2">{t.graph_root_label}</div>
+      <div className={`
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        sm:translate-x-0
+        fixed sm:relative z-20 sm:z-auto
+        w-64 h-full flex-shrink-0 flex flex-col border-r transition-transform duration-200
+      `} style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        {/* Close button (mobile) */}
+        <button onClick={() => setSidebarOpen(false)}
+          className="sm:hidden absolute right-2 top-2 w-7 h-7 flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <ChevronLeft size={16} />
+        </button>
+
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>{t.graph_root_label}</div>
           <div className="relative mb-3">
-            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#4a5568]" />
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
             <input
               value={entitySearch}
               onChange={e => setEntitySearch(e.target.value)}
               placeholder={t.graph_find_placeholder}
-              className="w-full pl-8 pr-3 py-1.5 bg-[#181c24] border border-[#262d3d] rounded text-xs font-mono text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+              className="w-full pl-8 pr-3 py-1.5 rounded text-xs font-mono outline-none"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
             />
           </div>
-          <div className="max-h-40 overflow-y-auto space-y-0.5">
-            {filteredEntities.slice(0, 50).map(e => {
+          <div className="max-h-44 overflow-y-auto space-y-0.5">
+            {filteredEntities.slice(0, 60).map(e => {
               const name = e.type === 'person' ? personDisplayName(e) : e.value;
               const meta = (e.metadata || {}) as Record<string, string>;
               const color = getColor(e.type);
+              const isActive = rootId === e.id;
               return (
                 <button
                   key={e.id}
-                  onClick={() => setRootId(e.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors ${
-                    rootId === e.id ? 'bg-[#1e2330]' : 'hover:bg-[#181c24]'
-                  }`}
+                  onClick={() => { setRootId(e.id); setSidebarOpen(false); }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
+                  style={{
+                    background: isActive ? 'var(--border)' : undefined,
+                    color: isActive ? color : 'var(--text-muted)',
+                  }}
                 >
                   {e.type === 'person' && meta.photo
                     ? <img src={meta.photo} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                     : <span className="text-sm flex-shrink-0">{getIcon(e.type)}</span>
                   }
-                  <span className="text-xs font-mono truncate" style={{ color: rootId === e.id ? color : '#7a8ba8' }}>{name}</span>
+                  <span className="text-xs font-mono truncate">{name}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Depth */}
-        <div className="p-4 border-b border-[#1e2330]">
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest">{t.graph_depth}</span>
-            <span className="text-sm font-mono text-[#00d4ff]">{depth}</span>
+            <span className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{t.graph_depth}</span>
+            <span className="text-sm font-mono" style={{ color: 'var(--accent)' }}>{depth}</span>
           </div>
           <input type="range" min={1} max={5} value={depth} onChange={e => setDepth(Number(e.target.value))}
-            className="w-full accent-[#00d4ff]" />
+            className="w-full accent-[var(--accent)]" style={{ accentColor: 'var(--accent)' } as any} />
         </div>
 
-        {/* Type filter */}
         <div className="p-4 flex-1 overflow-y-auto">
-          <div className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3">{t.graph_filter_types}</div>
+          <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>{t.graph_filter_types}</div>
           <div className="space-y-1">
             {allTypeNames.map(type => {
-              const active = filterTypes.includes(type);
+              const hidden = filterTypes.includes(type);
               const color = getColor(type);
               return (
-                <button
-                  key={type}
-                  onClick={() => toggleTypeFilter(type)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded transition-all ${active ? 'opacity-30' : ''}`}
-                >
+                <button key={type} onClick={() => toggleTypeFilter(type)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded transition-all"
+                  style={{ opacity: hidden ? 0.3 : 1 }}>
                   <span className="text-sm">{getIcon(type)}</span>
                   <span className="text-xs font-mono flex-1 text-left" style={{ color }}>{getLabel(type)}</span>
+                  {hidden && <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>hidden</span>}
                 </button>
               );
             })}
@@ -213,24 +293,24 @@ export default function GraphExplorer() {
         </div>
 
         {graphData && (
-          <div className="p-4 border-t border-[#1e2330]">
-            <p className="text-[10px] font-mono text-[#4a5568]">{t.graph_stats(nodeCount, edgeCount)}</p>
-            <p className="text-[10px] font-mono text-[#4a5568] mt-1">{t.graph_hint}</p>
+          <div className="p-4 border-t" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>{t.graph_stats(nodeCount, edgeCount)}</p>
+            <p className="text-[10px] font-mono mt-1" style={{ color: 'var(--text-muted)' }}>{t.graph_hint}</p>
           </div>
         )}
       </div>
 
       {/* Graph canvas */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-w-0">
         {!rootId ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="text-4xl mb-4">🔭</div>
-            <p className="text-sm font-mono text-[#7a8ba8]">{t.graph_empty}</p>
-            <p className="text-xs font-mono text-[#4a5568] mt-1">{t.graph_empty_hint}</p>
+          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+            <div className="text-5xl mb-4">🔭</div>
+            <p className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>{t.graph_empty}</p>
+            <p className="text-xs font-mono mt-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{t.graph_empty_hint}</p>
           </div>
         ) : isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm font-mono text-[#4a5568] animate-pulse">{t.graph_loading}</p>
+            <p className="text-sm font-mono animate-pulse" style={{ color: 'var(--text-muted)' }}>{t.graph_loading}</p>
           </div>
         ) : (
           <>
@@ -238,22 +318,21 @@ export default function GraphExplorer() {
             {/* Controls */}
             <div className="absolute bottom-4 right-4 flex flex-col gap-2">
               {[
-                { icon: <ZoomIn size={14} />, action: () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2) },
-                { icon: <ZoomOut size={14} />, action: () => cyRef.current?.zoom(cyRef.current.zoom() * 0.8) },
-                { icon: <Maximize2 size={14} />, action: () => cyRef.current?.fit(undefined, 30) },
+                { icon: <ZoomIn size={14} />, action: () => cyRef.current?.zoom({ level: (cyRef.current?.zoom() ?? 1) * 1.25, renderedPosition: { x: (containerRef.current?.offsetWidth ?? 400) / 2, y: (containerRef.current?.offsetHeight ?? 300) / 2 } }) },
+                { icon: <ZoomOut size={14} />, action: () => cyRef.current?.zoom({ level: (cyRef.current?.zoom() ?? 1) * 0.8, renderedPosition: { x: (containerRef.current?.offsetWidth ?? 400) / 2, y: (containerRef.current?.offsetHeight ?? 300) / 2 } }) },
+                { icon: <Maximize2 size={14} />, action: () => cyRef.current?.fit(undefined, 40) },
               ].map(({ icon, action }, i) => (
                 <button key={i} onClick={action}
-                  className="w-8 h-8 bg-[#111318] border border-[#262d3d] rounded flex items-center justify-center text-[#7a8ba8] hover:text-[#e8edf5] hover:border-[#3a4460] transition-colors">
+                  className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                   {icon}
                 </button>
               ))}
             </div>
-            {/* Open entity link */}
-            <div className="absolute top-4 right-4">
-              <button
-                onClick={() => navigate(`/entities/${rootId}`)}
-                className="text-xs font-mono text-[#00d4ff] hover:underline bg-[#111318] border border-[#262d3d] px-3 py-1.5 rounded"
-              >
+            <div className="absolute top-3 right-3">
+              <button onClick={() => navigate(`/entities/${rootId}`)}
+                className="text-xs font-mono px-3 py-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--accent)', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                 {t.graph_open}
               </button>
             </div>

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from .database import engine
 from . import models
-from .routers import entities, relationships, search, import_data, stats, entity_schemas
+from .routers import entities, relationships, search, import_data, stats, entity_schemas, backup, webdav_sync
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -44,6 +44,8 @@ app.include_router(search.router)
 app.include_router(import_data.router)
 app.include_router(stats.router)
 app.include_router(entity_schemas.router)
+app.include_router(backup.router)
+app.include_router(webdav_sync.router)
 
 
 @app.get("/")

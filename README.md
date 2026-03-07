@@ -1,43 +1,411 @@
-# OSINT Graph Intelligence Platform v2
+# OSINT Graph Intelligence Platform
 
-A full-stack application for storing and visualizing OSINT data as a graph.
+> Визуальная система управления OSINT-данными: храните, связывайте и исследуйте сущности в виде графа.
+>
+> A visual OSINT data management system: store, link and explore entities as a graph.
 
-## Features
-- 10 built-in entity types (person, email, phone, username, domain, IP, org, address, website, crypto wallet)
-- Custom entity types with arbitrary fields
-- Localized labels (EN / RU) for all types
-- Person form with optional name fields
-- Key-value metadata editor (no raw JSON)
-- Graph visualization with Cytoscape.js
-- Full-text search
-- CSV import
+---
 
-## Stack
-- **Backend**: FastAPI + SQLAlchemy + SQLite
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+## 🧭 Что это такое / What is this
 
-## Quick Start
+**OSINT Graph Platform** — self-hosted веб-приложение для аналитиков, исследователей и специалистов по безопасности. Позволяет создавать базы данных объектов (людей, email, доменов, IP-адресов и других сущностей), строить между ними связи и визуализировать граф зависимостей.
 
-### Backend
+Подходит для:
+- Проведения OSINT-расследований
+- Составления досье на физических и юридических лиц
+- Анализа утечек данных
+- Построения карт инфраструктуры
+- Хранения и структурирования разведывательной информации
+
+---
+
+## 🏗️ Архитектура / Architecture
+
+```
+osintgraphtool/
+├── backend/               # FastAPI (Python)
+│   ├── app/
+│   │   ├── main.py        # Точка входа; CORS, роутеры, миграции
+│   │   ├── models.py      # SQLAlchemy ORM модели
+│   │   ├── schemas.py     # Pydantic схемы запросов/ответов
+│   │   ├── crud.py        # CRUD операции с БД
+│   │   ├── database.py    # Подключение SQLite
+│   │   └── routers/
+│   │       ├── entities.py       # CRUD для сущностей
+│   │       ├── relationships.py  # CRUD для связей
+│   │       ├── search.py         # Полнотекстовый поиск
+│   │       ├── stats.py          # Статистика графа
+│   │       ├── entity_schemas.py # Управление типами сущностей
+│   │       ├── import_data.py    # Импорт CSV
+│   │       ├── backup.py         # Экспорт/импорт базы (ZIP)
+│   │       └── webdav_sync.py    # Синхронизация с WebDAV
+│   └── requirements.txt
+│
+├── frontend/              # React + TypeScript + Vite + Tailwind
+│   └── src/
+│       ├── pages/         # Страницы приложения
+│       ├── components/    # Переиспользуемые компоненты
+│       ├── context/       # React Context провайдеры
+│       ├── api/           # Axios API-клиент
+│       ├── i18n/          # Локализация (EN/RU)
+│       ├── store/         # Zustand store
+│       └── types/         # TypeScript типы
+│
+└── run.sh                 # Скрипт запуска всего сервиса
+```
+
+**Стек технологий:**
+- Backend: FastAPI, SQLAlchemy 2.0, SQLite, Pydantic v2, Uvicorn
+- Frontend: React 18, TypeScript, Vite, TailwindCSS, Tanstack Query, Cytoscape.js, Zustand, Axios
+- База данных: SQLite (файл `backend/osint.db`)
+
+---
+
+## 🚀 Быстрый старт / Quick Start
+
+### Требования / Requirements
+- Python 3.9+
+- Node.js 18+ (для фронтенда)
+
+### Запуск одной командой / One-command start
+
+```bash
+cd osintgraphtool
+chmod +x run.sh
+./run.sh
+```
+
+Откроет:
+- 🌐 Приложение: http://localhost:5173
+- ⚙️ API: http://localhost:8000
+- 📖 Документация API: http://localhost:8000/docs
+
+### Продакшн-режим / Production mode
+
+```bash
+./run.sh --prod
+# Собирает фронтенд и отдаёт через бэкенд на порту 8000
+```
+
+### Параметры run.sh
+
+| Флаг | Описание |
+|------|----------|
+| `--build` | Собрать фронтенд перед запуском |
+| `--prod` | Продакшн: сборка + сервис на одном порту |
+| `--port=PORT` | Изменить порт бэкенда (по умолчанию 8000) |
+| `FRONTEND_PORT=X` | Изменить порт фронтенда (по умолчанию 5173) |
+
+### Ручной запуск / Manual launch
+
+**Backend:**
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+**Frontend:**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open http://localhost:5173
+---
 
-## Environment
-Create `frontend/.env.local`:
+## 📦 Возможности / Features
+
+### 1. Сущности (Entities)
+
+Объекты разведки — центральная концепция системы.
+
+**Встроенные типы:**
+| Тип | Описание |
+|-----|----------|
+| `person` | Физическое лицо с ФИО, датой рождения, фото и кастомными полями |
+| `email` | Адрес электронной почты |
+| `phone` | Номер телефона |
+| `domain` | Доменное имя |
+| `ip` | IP-адрес (IPv4/IPv6) |
+| `username` | Логин / никнейм |
+| `organization` | Организация или компания |
+| `location` | Географическое место |
+| `vehicle` | Транспортное средство |
+| `document` | Документ (паспорт, ИНН, и т.д.) |
+| `crypto` | Криптовалютный адрес или кошелёк |
+| `file` | Файл или хэш |
+
+Каждая сущность имеет:
+- **Тип** (тип)
+- **Значение** (основное поле)
+- **Метаданные** — структурированные поля по схеме типа
+- **Заметки** — текст в формате Markdown
+- **Связи** с другими сущностями
+- **Доска** (Board) — канбан-подобная вкладка с карточками
+
+#### Персона (Person)
+Специальный тип с выделенными полями: фамилия, имя, отчество, дата рождения, фотография. Имя составляется автоматически.
+
+### 2. Связи (Relationships)
+
+Направленные рёбра между сущностями. Каждая связь имеет тип (строка) — например `owns`, `knows`, `resolves_to`, `alias_of`.
+
+Связи можно добавлять прямо со страницы сущности через модальное окно.
+
+### 3. Граф-эксплорер (Graph Explorer)
+
+Интерактивная визуализация на базе **Cytoscape.js**:
+- Выбор корневой сущности
+- Регулировка глубины обхода (1–5 уровней)
+- Фильтрация по типам узлов
+- Двойной клик — сделать узел новым корнем
+- Зум, пан, фитирование по кнопкам
+- Адаптирован под мобильные устройства (выдвижная панель)
+
+### 4. Кастомные типы сущностей (Entity Types)
+
+Страница `/entity-types` позволяет создавать собственные типы с:
+- Уникальным внутренним именем (латиница/цифры/`_`)
+- Названием на EN и RU
+- Эмодзи-иконкой и HEX-цветом
+- Произвольным набором полей (text, date, url, number, с флагом `required`)
+
+### 5. Импорт данных (Import)
+
+Многошаговый мастер импорта `/import`:
+
+1. **Загрузка** — перетащите любой CSV-файл
+2. **Маппинг колонок** — укажите:
+   - Откуда брать тип: из колонки или фиксированный для всех строк
+   - Какая колонка является основным значением
+   - Какие дополнительные колонки становятся полями метаданных
+   - Флаг «первая строка — заголовки»
+3. **Предпросмотр** — таблица первых 10 строк с итоговыми типами и значениями
+4. **Результат** — список импортированных сущностей и ошибок
+
+Поддерживается любой CSV — без строгих требований к формату заголовков.
+
+### 6. Резервное копирование (Backup)
+
+Страница «Настройки» → раздел «Database Backup»:
+
+- **Export .zip** — скачать архив со всеми данными:
+  - `data.json` — все сущности, связи и схемы
+  - `photos/` — директория с фотографиями персон в оригинальном формате (PNG/JPEG/WebP)
+- **Import .zip** — загрузить архив обратно: дубликаты по ID пропускаются, фотографии восстанавливаются
+
+### 7. WebDAV синхронизация
+
+Страница «Настройки» → раздел «WebDAV Sync»:
+
+Параметры:
+- **URL** — адрес папки на WebDAV-сервере (Nextcloud, ownCloud, etc.)
+- **Логин / Пароль** — credentials (пароль не сохраняется между сессиями)
+- **Имя файла** — имя резервного файла на сервере (по умолчанию `osint_backup.zip`)
+
+Кнопки:
+| Кнопка | Действие |
+|--------|----------|
+| **Тест** | Проверить соединение (PROPFIND) |
+| **Push** | Загрузить текущую базу на сервер |
+| **Pull** | Скачать базу с сервера и смержить в локальную |
+| **Sync** | Pull → мёрж → Push (полная двусторонняя синхронизация) |
+
+### 8. Настройки интерфейса (Settings)
+
+- **Тема** — тёмная / светлая
+- **Язык** — EN / RU (интерфейс полностью двуязычный)
+- **Формат даты:**
+  - Относительный (`3 ч. назад`)
+  - Короткий (дата + время)
+  - Полный (день месяца, полное название месяца, год)
+- **Порядок даты:**
+  - `DD.MM.YYYY` — Россия / Европа
+  - `MM/DD/YYYY` — США
+  - `YYYY-MM-DD` — ISO 8601
+
+### 9. Поиск
+
+Глобальный поиск по `Ctrl+K` / `⌘K` — ищет по всем сущностям в реальном времени. Разделяет результаты на «Люди» и «Другие сущности».
+
+### 10. Заметки (Notes)
+
+На странице каждой сущности — раздел с заметками в формате **Markdown** с live-preview. Поддерживаются: заголовки, списки, жирный/курсив, блоки кода, ссылки.
+
+### 11. Доска (Board)
+
+Вкладка «Доска» на странице сущности — визуальное рабочее пространство:
+- Drag-and-drop карточки с произвольным текстом
+- Позиции карточек сохраняются в базе данных
+- Сброс расположения одной кнопкой
+
+---
+
+## 🔌 API
+
+Документация: `http://localhost:8000/docs` (Swagger UI)
+
+### Основные эндпоинты
+
+| Метод | URL | Описание |
+|-------|-----|----------|
+| `GET` | `/entities` | Список сущностей (пагинация, фильтр по типу) |
+| `POST` | `/entities` | Создать сущность |
+| `GET` | `/entities/{id}` | Получить сущность |
+| `PUT` | `/entities/{id}` | Обновить сущность |
+| `DELETE` | `/entities/{id}` | Удалить сущность |
+| `GET` | `/entities/{id}/relationships` | Связи сущности |
+| `GET` | `/entities/{id}/graph?depth=2` | Граф вокруг сущности |
+| `POST` | `/relationships` | Создать связь |
+| `DELETE` | `/relationships/{id}` | Удалить связь |
+| `GET` | `/search?q=query` | Полнотекстовый поиск |
+| `GET` | `/stats` | Статистика |
+| `GET` | `/entity-schemas` | Кастомные типы |
+| `POST` | `/entity-schemas` | Создать тип |
+| `POST` | `/import/csv` | Импорт CSV (form-data, поле `file`) |
+| `GET` | `/backup/export` | Скачать резервную копию (ZIP) |
+| `POST` | `/backup/import` | Загрузить резервную копию |
+| `POST` | `/webdav/test` | Тест WebDAV |
+| `POST` | `/webdav/push` | Загрузить на WebDAV |
+| `POST` | `/webdav/pull` | Скачать с WebDAV |
+| `POST` | `/webdav/sync` | Двусторонняя синхронизация |
+
+### Формат сущности
+
+```json
+{
+  "id": "uuid",
+  "type": "person",
+  "value": "Иванов Иван Иванович",
+  "metadata": {
+    "first_name": "Иван",
+    "last_name": "Иванов",
+    "middle_name": "Иванович",
+    "dob": "1990-05-15",
+    "photo": "data:image/jpeg;base64,..."
+  },
+  "notes": "## Заметки\nТекст в формате Markdown",
+  "created_at": "2024-01-01T12:00:00"
+}
 ```
-VITE_API_URL=http://localhost:8000/api
+
+---
+
+## ⚙️ Конфигурация
+
+### Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|------------|-------------|----------|
+| `BACKEND_PORT` | `8000` | Порт бэкенда |
+| `FRONTEND_PORT` | `5173` | Порт фронтенд dev-сервера |
+| `VITE_API_URL` | `/api` | URL бэкенда (для сборки фронтенда) |
+
+### База данных
+
+SQLite-файл создаётся автоматически при первом запуске:
 ```
+backend/osint.db
+```
+
+Для смены пути отредактируйте `backend/app/database.py`:
+```python
+SQLALCHEMY_DATABASE_URL = "sqlite:///./osint.db"
+```
+
+### Прокси (Vite dev)
+
+В `frontend/vite.config.ts` настроен прокси `/api` → `http://localhost:8000`. Изменить:
+```ts
+proxy: {
+  '/api': {
+    target: 'http://localhost:8000',
+  }
+}
+```
+
+---
+
+## 📱 Мобильная версия
+
+Приложение адаптировано для смартфонов:
+- Боковая навигация скрывается в выдвижное меню
+- Все страницы имеют мобильную вёрстку
+- Граф-эксплорер с выдвижной панелью фильтров
+
+---
+
+## 🔒 Безопасность
+
+- Приложение предназначено для **локального использования** или закрытой сети
+- Аутентификации нет — не выставляйте сервис в открытый интернет
+- Пароль WebDAV хранится только в RAM сессии браузера
+- CORS настроен на `allow_origins=["*"]` — измените для продакшна в `backend/app/main.py`
+
+---
+
+## 🛠️ Разработка / Development
+
+### Структура фронтенда
+
+```
+src/
+├── pages/
+│   ├── Dashboard.tsx         # Главная страница со статистикой
+│   ├── Entities.tsx          # Список всех сущностей
+│   ├── EntityPage.tsx        # Страница конкретной сущности
+│   ├── EntityBoardPage.tsx   # Доска сущности (drag-and-drop)
+│   ├── GraphExplorer.tsx     # Интерактивный граф
+│   ├── CreateEntity.tsx      # Форма создания сущности
+│   ├── ImportPage.tsx        # Мастер импорта CSV
+│   ├── EntityTypesPage.tsx   # Управление типами сущностей
+│   └── SettingsPage.tsx      # Настройки + бэкап + WebDAV
+│
+├── components/
+│   ├── layout/Layout.tsx     # Основной layout с навигацией
+│   ├── graph/MiniGraph.tsx   # Мини-граф на странице сущности
+│   └── ui/
+│       ├── EntityTypeBadge.tsx   # Бейдж типа сущности
+│       ├── MarkdownRenderer.tsx  # Рендерер Markdown
+│       ├── MetadataEditor.tsx    # Редактор метаданных
+│       ├── SearchModal.tsx       # Модал глобального поиска
+│       └── ConfirmDialog.tsx     # Диалог подтверждения
+│
+├── context/
+│   ├── SettingsContext.tsx   # Тема, язык, формат даты
+│   ├── EntitySchemasContext.tsx  # Типы сущностей
+│   └── ToastContext.tsx      # Уведомления (toast)
+│
+├── i18n/
+│   ├── index.ts              # Все переводы EN/RU
+│   └── LangProvider.tsx      # Провайдер языка
+│
+└── api/index.ts              # Все API-вызовы (axios)
+```
+
+### Добавить новый встроенный тип
+
+1. Добавить запись в `BUILTIN_TYPES` в `frontend/src/utils.ts`
+2. При необходимости добавить поля в `BUILTIN_FIELD_PRESETS`
+3. Добавить переводы в `i18n/index.ts`
+
+### Добавить новый API-эндпоинт
+
+1. Создать роутер в `backend/app/routers/`
+2. Зарегистрировать в `backend/app/main.py`
+3. Добавить метод в `frontend/src/api/index.ts`
+
+---
+
+## 📄 Лицензия / License
+
+MIT — свободное использование, изменение и распространение.
+
+---
+
+## 🤝 Contributing
+
+Pull requests приветствуются. Для крупных изменений — сначала откройте Issue.

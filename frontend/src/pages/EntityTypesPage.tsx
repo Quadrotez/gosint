@@ -6,6 +6,7 @@ import { useLang } from '../i18n/LangProvider';
 import { BUILTIN_TYPE_LABELS, BUILTIN_FIELD_PRESETS } from '../utils';
 import type { FieldDefinition, EntityTypeSchemaCreate, EntityTypeSchemaUpdate, EntityTypeSchema } from '../types';
 import { Plus, X, Trash2, Check, Edit2, Shapes, ChevronDown, ChevronUp } from 'lucide-react';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 
 const FIELD_TYPES = ['text', 'date', 'url', 'number'] as const;
 const PALETTE = [
@@ -30,6 +31,7 @@ export default function EntityTypesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingSchema, setEditingSchema] = useState<EntityTypeSchema | null>(null);
   const [expandedBuiltin, setExpandedBuiltin] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Shared form state (create + edit)
   const [name, setName] = useState('');
@@ -309,7 +311,7 @@ export default function EntityTypesPage() {
                       <Edit2 size={13} />
                     </button>
                     <button
-                      onClick={() => { if (confirm(t.etm_delete_confirm)) deleteMutation.mutate(schema.id); }}
+                      onClick={() => setConfirmDeleteId(schema.id)}
                       className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded"
                       style={{ color: 'var(--text-muted)' }}
                     >
@@ -371,6 +373,15 @@ export default function EntityTypesPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        message={t.etm_delete_confirm}
+        confirmLabel={t.etm_cancel === 'Cancel' ? 'Delete' : 'Удалить'}
+        cancelLabel={t.etm_cancel}
+        onConfirm={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

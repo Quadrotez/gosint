@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LangProvider, useLang } from './i18n/LangProvider';
 import { EntitySchemasProvider } from './context/EntitySchemasContext';
 import { SettingsProvider } from './context/SettingsContext';
+import { ToastProvider } from './context/ToastContext';
 import Layout from './components/layout/Layout';
 import SearchModal from './components/ui/SearchModal';
 import Dashboard from './pages/Dashboard';
@@ -28,24 +29,26 @@ function AppInner() {
   const { lang } = useLang();
   return (
     <SettingsProvider lang={lang}>
-      <BrowserRouter>
-        <EntitySchemasProvider>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/entities" element={<Entities />} />
-              <Route path="/entities/:id" element={<EntityPage />} />
-              <Route path="/entities/:id/board" element={<EntityBoardPage />} />
-              <Route path="/graph" element={<GraphExplorer />} />
-              <Route path="/create" element={<CreateEntity />} />
-              <Route path="/import" element={<ImportPage />} />
-              <Route path="/entity-types" element={<EntityTypesPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
-          </Layout>
-          <SearchModal />
-        </EntitySchemasProvider>
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <EntitySchemasProvider>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/entities" element={<Entities />} />
+                <Route path="/entities/:id" element={<EntityPage />} />
+                <Route path="/entities/:id/board" element={<EntityBoardPage />} />
+                <Route path="/graph" element={<GraphExplorer />} />
+                <Route path="/create" element={<CreateEntity />} />
+                <Route path="/import" element={<ImportPage />} />
+                <Route path="/entity-types" element={<EntityTypesPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </Layout>
+            <SearchModal />
+          </EntitySchemasProvider>
+        </BrowserRouter>
+      </ToastProvider>
     </SettingsProvider>
   );
 }

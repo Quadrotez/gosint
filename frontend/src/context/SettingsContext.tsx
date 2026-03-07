@@ -2,12 +2,15 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 
 export type Theme = 'dark' | 'light';
 export type DateFormat = 'relative' | 'short' | 'full';
+export type DateLocale = 'dmy' | 'mdy' | 'ymd';
 
 interface SettingsContextType {
   theme: Theme;
   setTheme: (t: Theme) => void;
   dateFormat: DateFormat;
   setDateFormat: (f: DateFormat) => void;
+  dateLocale: DateLocale;
+  setDateLocale: (l: DateLocale) => void;
   formatDate: (dateStr: string) => string;
 }
 
@@ -16,6 +19,8 @@ const SettingsCtx = createContext<SettingsContextType>({
   setTheme: () => {},
   dateFormat: 'short',
   setDateFormat: () => {},
+  dateLocale: 'dmy',
+  setDateLocale: () => {},
   formatDate: (d) => d,
 });
 
@@ -46,6 +51,34 @@ function formatRelative(dateStr: string, lang: string): string {
   return `${month}mo ago`;
 }
 
+function formatWithLocale(date: Date, format: DateFormat, locale: DateLocale, lang: string): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const d = pad(date.getDate());
+  const m = pad(date.getMonth() + 1);
+  const y = date.getFullYear();
+  const H = pad(date.getHours());
+  const M = pad(date.getMinutes());
+  const time = `${H}:${M}`;
+
+  const monthNames = {
+    en: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    ru: ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'],
+  };
+
+  if (format === 'full') {
+    const monthName = monthNames[lang === 'ru' ? 'ru' : 'en'][date.getMonth()];
+    if (locale === 'mdy') return `${monthName} ${d}, ${y} ${time}`;
+    if (locale === 'ymd') return `${y}-${m}-${d} ${time}`;
+    // dmy default
+    return `${d} ${monthName} ${y} ${time}`;
+  }
+
+  // short
+  if (locale === 'mdy') return `${m}/${d}/${y} ${time}`;
+  if (locale === 'ymd') return `${y}-${m}-${d} ${time}`;
+  return `${d}.${m}.${y} ${time}`;
+}
+
 export function SettingsProvider({ children, lang }: { children: ReactNode; lang: string }) {
   const [theme, setThemeState] = useState<Theme>(
     () => (localStorage.getItem('osint_theme') as Theme) || 'dark'
@@ -53,48 +86,34 @@ export function SettingsProvider({ children, lang }: { children: ReactNode; lang
   const [dateFormat, setDateFormatState] = useState<DateFormat>(
     () => (localStorage.getItem('osint_date_format') as DateFormat) || 'short'
   );
+  const [dateLocale, setDateLocaleState] = useState<DateLocale>(
+    () => (localStorage.getItem('osint_date_locale') as DateLocale) || 'dmy'
+  );
 
-  const setTheme = (t: Theme) => {
-    setThemeState(t);
-    localStorage.setItem('osint_theme', t);
-  };
-
-  const setDateFormat = (f: DateFormat) => {
-    setDateFormatState(f);
-    localStorage.setItem('osint_date_format', f);
-  };
+  const setTheme = (t: Theme) => { setThemeState(t); localStorage.setItem('osint_theme', t); };
+  const setDateFormat = (f: DateFormat) => { setDateFormatState(f); localStorage.setItem('osint_date_format', f); };
+  const setDateLocale = (l: DateLocale) => { setDateLocaleState(l); localStorage.setItem('osint_date_locale', l); };
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'light') {
-      root.classList.add('theme-light');
-    } else {
-      root.classList.remove('theme-light');
-    }
+    if (theme === 'light') root.classList.add('theme-light');
+    else root.classList.remove('theme-light');
   }, [theme]);
 
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return '—';
     try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
       if (dateFormat === 'relative') return formatRelative(dateStr, lang);
-      if (dateFormat === 'short') {
-        return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-GB', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        });
-      }
-      // full
-      return new Date(dateStr).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-GB', {
-        day: 'numeric', month: 'long', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      });
+      return formatWithLocale(date, dateFormat, dateLocale, lang);
     } catch {
       return dateStr;
     }
   };
 
   return (
-    <SettingsCtx.Provider value={{ theme, setTheme, dateFormat, setDateFormat, formatDate }}>
+    <SettingsCtx.Provider value={{ theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate }}>
       {children}
     </SettingsCtx.Provider>
   );

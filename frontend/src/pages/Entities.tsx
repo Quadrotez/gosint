@@ -7,11 +7,13 @@ import { useSettings } from '../context/SettingsContext';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import { useLang } from '../i18n/LangProvider';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { Search, Trash2, ExternalLink, Filter } from 'lucide-react';
 
 export default function Entities() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { t } = useLang();
   const { formatDate } = useSettings();
@@ -137,7 +139,7 @@ export default function Entities() {
                         <ExternalLink size={13} />
                       </Link>
                       <button
-                        onClick={() => { if (confirm(t.delete_confirm)) deleteMutation.mutate(entity.id); }}
+                        onClick={() => setConfirmId(entity.id)}
                         className="p-1.5 rounded hover:bg-[#262d3d] text-[#7a8ba8] hover:text-[#ff4444] transition-colors"
                       >
                         <Trash2 size={13} />
@@ -156,6 +158,15 @@ export default function Entities() {
           {t.ent_showing(filtered.length, entities.length)}
         </p>
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        message={t.delete_confirm}
+        confirmLabel={t.cancel === 'Cancel' ? 'Delete' : 'Удалить'}
+        cancelLabel={t.cancel}
+        onConfirm={() => confirmId && deleteMutation.mutate(confirmId)}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

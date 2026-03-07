@@ -68,3 +68,33 @@ export const importCSV = (file: File) => {
   form.append('file', file);
   return api.post<Entity[]>('/import/csv', form).then(r => r.data);
 };
+
+// Backup
+export const exportBackup = () =>
+  api.get('/backup/export', { responseType: 'blob' }).then(r => r.data as Blob);
+
+export const importBackup = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post<{ success: boolean; imported: Record<string, number> }>('/backup/import', form).then(r => r.data);
+};
+
+// WebDAV
+export interface WebDAVConfig {
+  url: string;
+  username: string;
+  password: string;
+  filename?: string;
+}
+
+export const webdavTest = (cfg: WebDAVConfig) =>
+  api.post<{ ok: boolean; status: number }>('/webdav/test', cfg).then(r => r.data);
+
+export const webdavPush = (cfg: WebDAVConfig) =>
+  api.post<{ ok: boolean; bytes: number }>('/webdav/push', cfg).then(r => r.data);
+
+export const webdavPull = (cfg: WebDAVConfig) =>
+  api.post<{ ok: boolean; merged: Record<string, number> }>('/webdav/pull', cfg).then(r => r.data);
+
+export const webdavSync = (cfg: WebDAVConfig) =>
+  api.post<{ ok: boolean; pulled: Record<string, number>; pushed_bytes: number }>('/webdav/sync', cfg).then(r => r.data);
