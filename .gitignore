@@ -4,3 +4,4 @@ __pycache__/
 osint.db
 docker-compose.yml
 dist/
+gosint.db
