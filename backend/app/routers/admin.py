@@ -121,3 +121,69 @@ def get_public_settings(db: Session = Depends(get_db)):
         s = models.SiteSettings(id="main")
         db.add(s); db.commit(); db.refresh(s)
     return schemas.SiteSettingsOut.model_validate(s)
+
+
+# ── DB Config ─────────────────────────────────────────────────────────────────
+
+import re as _re
+import os as _os
+
+def _mask_url(url: str) -> str:
+    """Hide password in connection string for display."""
+    return _re.sub(r'(:)[^:@]+(@)', r'\1***\2', url)
+
+def _detect_engine(url: str) -> str:
+    if url.startswith("postgresql") or url.startswith("postgres"):
+        return "postgresql"
+    if url.startswith("mysql"):
+        return "mysql"
+    return "sqlite"
+
+
+@router.get("/db-config", response_model=schemas.DbConfigOut)
+def get_db_config(
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(get_admin_user),
+):
+    from ..database import DATABASE_URL
+    engine_name = _detect_engine(DATABASE_URL)
+    s = db.query(models.SiteSettings).filter(models.SiteSettings.id == "main").first()
+    pending = s.database_url if s and s.database_url else None
+    return schemas.DbConfigOut(
+        engine=engine_name,
+        url_display=_mask_url(DATABASE_URL),
+        is_sqlite=(engine_name == "sqlite"),
+        pending_url=_mask_url(pending) if pending else None,
+    )
+
+
+@router.put("/db-config", response_model=schemas.DbConfigOut)
+def update_db_config(
+    body: schemas.DbConfigUpdate,
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(get_admin_user),
+):
+    s = db.query(models.SiteSettings).filter(models.SiteSettings.id == "main").first()
+    if not s:
+        s = models.SiteSettings(id="main")
+        db.add(s)
+    # Save pending URL — will be applied on next restart via DATABASE_URL env
+    url = body.database_url.strip()
+    s.database_url = url or None
+    # Also write to .env.db file next to main.py so run.sh can pick it up
+    env_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), ".env.db")
+    if url:
+        with open(env_path, "w") as f:
+            f.write(f"DATABASE_URL={url}\n")
+    else:
+        if _os.path.exists(env_path):
+            _os.remove(env_path)
+    db.commit(); db.refresh(s)
+    from ..database import DATABASE_URL
+    engine_name = _detect_engine(DATABASE_URL)
+    return schemas.DbConfigOut(
+        engine=engine_name,
+        url_display=_mask_url(DATABASE_URL),
+        is_sqlite=(engine_name == "sqlite"),
+        pending_url=_mask_url(url) if url else None,
+    )

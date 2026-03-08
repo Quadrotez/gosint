@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createEntity } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
+import { useSettings } from '../context/SettingsContext';
 import { BUILTIN_ENTITY_TYPES, BUILTIN_FIELD_PRESETS } from '../utils';
 import type { FieldDefinition } from '../types';
 import { ArrowLeft, Plus, X, Camera, User } from 'lucide-react';
@@ -14,6 +15,7 @@ export default function CreateEntity() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t, lang } = useLang();
+  const { dateLocale } = useSettings();
   const { schemas, allTypeNames, getColor, getIcon, getLabel } = useEntitySchemas();
 
   const [type, setType] = useState('person');
@@ -27,6 +29,15 @@ export default function CreateEntity() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [personExtra, setPersonExtra] = useState<KVField[]>([]);
   const photoRef = useRef<HTMLInputElement>(null);
+
+  // Format date from YYYY-MM-DD to user's preferred locale for display
+  const formatDob = (iso: string): string => {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    if (dateLocale === 'mdy') return `${m}/${d}/${y}`;
+    if (dateLocale === 'ymd') return `${y}-${m}-${d}`;
+    return `${d}.${m}.${y}`;  // dmy default (Russia/Europe)
+  };
 
   // Generic metadata fields
   const [metaFields, setMetaFields] = useState<KVField[]>([]);
@@ -299,7 +310,7 @@ export default function CreateEntity() {
               ) : (
                 <span className="text-[#4a5568] ml-2 italic">{lang === 'ru' ? 'Неизвестная персона' : 'Unknown Person'}</span>
               )}
-              {dob && <span className="text-[#4a5568] ml-2">· {dob}</span>}
+              {dob && <span className="text-[#4a5568] ml-2">· {formatDob(dob)}</span>}
             </div>
           </div>
         )}

@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminGetUsers, adminUpdateUser, adminDeleteUser, adminGetSettings, adminUpdateSettings } from '../api';
+import { adminGetUsers, adminUpdateUser, adminDeleteUser, adminGetSettings, adminUpdateSettings, getDbConfig, updateDbConfig, type DbConfigOut } from '../api';
 import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangProvider';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import type { AdminUser } from '../types';
-import { Shield, Users, Settings, Trash2, Check, X, Upload, Globe, HardDrive, RefreshCw } from 'lucide-react';
+import { Shield, Users, Settings, Trash2, Check, X, Upload, Globe, HardDrive, RefreshCw, Database, AlertTriangle } from 'lucide-react';
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -16,7 +16,9 @@ export default function AdminPage() {
   const qc = useQueryClient();
   const iconInputRef = useRef<HTMLInputElement>(null);
 
-  const [tab, setTab] = useState<'users' | 'settings'>('users');
+  const [tab, setTab] = useState<'users' | 'settings' | 'database'>('users');
+  const [dbUrl, setDbUrl] = useState('');
+  const [dbSaved, setDbSaved] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [memLimit, setMemLimit] = useState<string>('');
   const [newPwd, setNewPwd] = useState('');
@@ -34,6 +36,21 @@ export default function AdminPage() {
   const { data: settings } = useQuery({
     queryKey: ['admin-settings'],
     queryFn: adminGetSettings,
+  });
+
+  const { data: dbConfig } = useQuery<DbConfigOut>({
+    queryKey: ['admin-db-config'],
+    queryFn: getDbConfig,
+  });
+
+  const updateDbMut = useMutation({
+    mutationFn: (url: string) => updateDbConfig(url),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-db-config'] });
+      setDbSaved(true);
+      setTimeout(() => setDbSaved(false), 3000);
+    },
+    onError: (e: unknown) => toast.error((e as any)?.response?.data?.detail || 'Error'),
   });
 
   const updateUserMut = useMutation({
@@ -92,6 +109,7 @@ export default function AdminPage() {
         {[
           { id: 'users', label: lang === 'ru' ? 'Пользователи' : 'Users', icon: Users },
           { id: 'settings', label: lang === 'ru' ? 'Настройки сайта' : 'Site Settings', icon: Settings },
+          { id: 'database', label: lang === 'ru' ? 'База данных' : 'Database', icon: Database },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id as typeof tab)}
             className="flex items-center gap-2 px-4 py-2 rounded-md font-mono text-sm transition-all"
@@ -212,6 +230,105 @@ export default function AdminPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Database tab */}
+      {tab === 'database' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-5" style={cardStyle}>
+            <div className="flex items-center gap-2 mb-4">
+              <Database size={14} style={{ color: 'var(--accent)' }} />
+              <span className="font-mono text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                {lang === 'ru' ? 'Конфигурация базы данных' : 'Database Configuration'}
+              </span>
+            </div>
+
+            {dbConfig && (
+              <div className="mb-4 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                <div className="text-[10px] font-mono uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
+                  {lang === 'ru' ? 'Текущий движок' : 'Current engine'}
+                </div>
+                <div className="font-mono text-sm" style={{ color: 'var(--accent)' }}>
+                  {dbConfig.engine.toUpperCase()}
+                  {dbConfig.is_sqlite && <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--border)', color: 'var(--text-muted)' }}>default</span>}
+                </div>
+                <div className="text-xs font-mono mt-1 break-all" style={{ color: 'var(--text-muted)' }}>{dbConfig.url_display}</div>
+                {dbConfig.pending_url && (
+                  <div className="mt-2 text-[10px] font-mono" style={{ color: '#ffd700' }}>
+                    ⏳ {lang === 'ru' ? 'Ожидает перезапуска:' : 'Pending restart:'} {dbConfig.pending_url}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                  {lang === 'ru' ? 'URL подключения' : 'Connection URL'}
+                </label>
+                <input
+                  value={dbUrl}
+                  onChange={e => setDbUrl(e.target.value)}
+                  placeholder="postgresql://user:pass@host:5432/dbname  |  mysql+pymysql://...  |  (пусто = SQLite)"
+                  className="w-full px-3 py-2 rounded-lg font-mono text-xs outline-none"
+                  style={inputStyle}
+                />
+                <p className="text-[10px] font-mono mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {lang === 'ru'
+                    ? 'Примеры: postgresql://user:pass@localhost/dbname · mysql+pymysql://user:pass@localhost/dbname · оставьте пустым для SQLite'
+                    : 'Examples: postgresql://user:pass@localhost/dbname · mysql+pymysql://user:pass@localhost/dbname · empty = SQLite'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#ffd70010', border: '1px solid #ffd70030' }}>
+                <AlertTriangle size={13} style={{ color: '#ffd700', flexShrink: 0 }} />
+                <p className="text-[11px] font-mono" style={{ color: '#ffd700' }}>
+                  {lang === 'ru'
+                    ? 'Изменение вступит в силу после перезапуска сервера. Убедитесь что установлен нужный пакет (psycopg2, pymysql).'
+                    : 'Change takes effect after server restart. Make sure the driver package is installed (psycopg2, pymysql).'}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => updateDbMut.mutate(dbUrl)}
+                  disabled={updateDbMut.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm disabled:opacity-50"
+                  style={{ background: 'var(--accent)', color: '#000' }}>
+                  {dbSaved ? <Check size={13} /> : <Database size={13} />}
+                  {dbSaved ? (lang === 'ru' ? 'Сохранено' : 'Saved') : (lang === 'ru' ? 'Сохранить' : 'Save')}
+                </button>
+                {dbUrl && (
+                  <button onClick={() => setDbUrl('')}
+                    className="px-4 py-2 rounded-lg font-mono text-sm"
+                    style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Quick presets */}
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+                  {lang === 'ru' ? 'Быстрые шаблоны' : 'Quick templates'}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'SQLite (default)', url: '' },
+                    { label: 'PostgreSQL', url: 'postgresql://user:password@localhost:5432/osint_db' },
+                    { label: 'MySQL', url: 'mysql+pymysql://user:password@localhost:3306/osint_db' },
+                  ].map(({ label, url }) => (
+                    <button key={label} onClick={() => setDbUrl(url)}
+                      className="px-3 py-1.5 rounded font-mono text-xs"
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { createEntitySchema, deleteEntitySchema, updateEntitySchema } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
-import { BUILTIN_TYPE_LABELS, BUILTIN_FIELD_PRESETS } from '../utils';
+import { BUILTIN_FIELD_PRESETS } from '../utils';
 import type { FieldDefinition, EntityTypeSchemaCreate, EntityTypeSchemaUpdate, EntityTypeSchema } from '../types';
-import { Plus, X, Trash2, Check, Edit2, Shapes, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, X, Trash2, Check, Edit2, Shapes } from 'lucide-react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
 const FIELD_TYPES = ['text', 'date', 'url', 'number'] as const;
@@ -30,7 +30,6 @@ export default function EntityTypesPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingSchema, setEditingSchema] = useState<EntityTypeSchema | null>(null);
-  const [expandedBuiltin, setExpandedBuiltin] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Shared form state (create + edit)
@@ -38,12 +37,13 @@ export default function EntityTypesPage() {
   const [labelEn, setLabelEn] = useState('');
   const [labelRu, setLabelRu] = useState('');
   const [icon, setIcon] = useState('◆');
+  const [iconImage, setIconImage] = useState<string | null>(null);
   const [color, setColor] = useState(PALETTE[4]);
   const [fields, setFields] = useState<FieldRow[]>([]);
+  const iconImageRef = useRef<HTMLInputElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const customSchemas = schemas.filter(s => !s.is_builtin);
-  const builtinEntries = Object.entries(BUILTIN_TYPE_LABELS);
 
   const createMutation = useMutation({
     mutationFn: createEntitySchema,
@@ -66,7 +66,7 @@ export default function EntityTypesPage() {
   const resetForm = () => {
     setShowForm(false); setEditingSchema(null);
     setName(''); setLabelEn(''); setLabelRu('');
-    setIcon('◆'); setColor(PALETTE[4]);
+    setIcon('◆'); setIconImage(null); setColor(PALETTE[4]);
     setFields([]); setErrors({});
   };
 
@@ -75,7 +75,9 @@ export default function EntityTypesPage() {
     setLabelEn(schema.label_en);
     setLabelRu(schema.label_ru || '');
     setIcon(schema.icon || '◆');
+    setIconImage((schema as any).icon_image || null);
     setColor(schema.color || PALETTE[4]);
+    setShowForm(true);
     setFields((schema.fields || []).map(f => ({
       name: f.name, label_en: f.label_en, label_ru: f.label_ru || '',
       field_type: f.field_type as any, required: f.required,
@@ -104,12 +106,17 @@ export default function EntityTypesPage() {
     if (isEdit) {
       updateMutation.mutate({
         id: editingSchema!.id,
-        data: { label_en: labelEn.trim(), label_ru: labelRu.trim() || undefined, icon: icon.trim() || '◆', color, fields: fieldsList },
+        data: {
+          label_en: labelEn.trim(), label_ru: labelRu.trim() || undefined,
+          icon: icon.trim() || '◆', color, fields: fieldsList,
+          icon_image: iconImage || undefined,
+        },
       });
     } else {
       createMutation.mutate({
         name: name.trim(), label_en: labelEn.trim(), label_ru: labelRu.trim() || undefined,
         icon: icon.trim() || '◆', color, fields: fieldsList,
+        icon_image: iconImage || undefined,
       } as EntityTypeSchemaCreate);
     }
   };
@@ -189,6 +196,43 @@ export default function EntityTypesPage() {
                     />
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Icon image upload */}
+            <div>
+              <label className="text-xs font-mono mb-1.5 block" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Изображение типа (квадрат, необязательно)' : 'Type image (square, optional)'}
+              </label>
+              <div className="flex items-center gap-3">
+                {iconImage ? (
+                  <div className="relative">
+                    <img src={iconImage} alt="" className="w-12 h-12 rounded-lg object-cover" style={{ border: '1px solid var(--border)' }} />
+                    <button onClick={() => setIconImage(null)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] flex items-center justify-center">
+                      <X size={10} className="text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                    {icon}
+                  </div>
+                )}
+                <button onClick={() => iconImageRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-xs"
+                  style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)', border: '1px solid var(--border-light)' }}>
+                  {lang === 'ru' ? '📁 Загрузить' : '📁 Upload'}
+                </button>
+                <input ref={iconImageRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => setIconImage(ev.target?.result as string);
+                    reader.readAsDataURL(f);
+                    e.target.value = '';
+                  }} />
               </div>
             </div>
 
@@ -324,49 +368,37 @@ export default function EntityTypesPage() {
           )}
         </div>
 
-        {/* Built-in types */}
+        {/* Built-in types — now editable/deletable just like custom */}
         <div>
           <h2 className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>{t.etm_builtin}</h2>
           <div className="space-y-2">
-            {builtinEntries.map(([type, labels]) => {
-              const col = getColor(type);
-              const label = lang === 'ru' ? labels.ru : labels.en;
-              const preset = BUILTIN_FIELD_PRESETS[type];
-              const isExpanded = expandedBuiltin === type;
+            {schemas.filter(s => s.is_builtin).map(schema => {
+              const col = schema.color || getColor(schema.name);
+              const label = lang === 'ru' && schema.label_ru ? schema.label_ru : schema.label_en;
               return (
-                <div key={type} className="rounded-xl overflow-hidden" style={cardStyle}>
-                  <div
-                    className="p-3 flex items-center gap-3 cursor-pointer"
-                    onClick={() => setExpandedBuiltin(isExpanded ? null : type)}
-                  >
-                    <span className="text-lg w-7 text-center">{getIcon(type)}</span>
-                    <div className="flex-1">
-                      <div className="font-mono text-sm" style={{ color: col }}>{label}</div>
-                      <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                        {type} {preset ? `· ${preset.length} ${lang === 'ru' ? 'полей' : 'fields'}` : ''}
-                      </div>
+                <div key={schema.id} className="rounded-xl p-4 flex items-center gap-3 group" style={cardStyle}>
+                  {(schema as any).icon_image
+                    ? <img src={(schema as any).icon_image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                    : <span className="text-xl w-8 text-center">{schema.icon || '◆'}</span>}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-sm" style={{ color: col }}>{label}</div>
+                    <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                      {schema.name}
+                      <span className="ml-1.5 px-1 rounded" style={{ background: 'var(--border)', color: 'var(--text-muted)' }}>
+                        {lang === 'ru' ? 'встроенный' : 'built-in'}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded" style={{ color: 'var(--text-muted)', background: 'var(--border)' }}>
-                      {lang === 'ru' ? 'встроенный' : 'built-in'}
-                    </span>
-                    {preset && (isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
                   </div>
-                  {isExpanded && preset && (
-                    <div className="border-t px-3 pb-3 pt-2" style={{ borderColor: 'var(--border)' }}>
-                      <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
-                        {lang === 'ru' ? 'Предустановленные поля' : 'Preset fields'}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1">
-                        {preset.map(f => (
-                          <div key={f.key} className="flex items-center gap-1.5 text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                            <span className="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0" style={{ background: col }} />
-                            {lang === 'ru' ? f.label_ru : f.label_en}
-                            <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>({f.type})</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <button onClick={() => startEdit(schema)}
+                    className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded"
+                    style={{ color: 'var(--text-muted)' }}>
+                    <Edit2 size={13} />
+                  </button>
+                  <button onClick={() => setConfirmDeleteId(schema.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded"
+                    style={{ color: 'var(--text-muted)' }}>
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               );
             })}

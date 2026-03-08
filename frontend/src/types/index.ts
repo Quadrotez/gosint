@@ -41,6 +41,7 @@ export interface Entity {
   value: string;
   metadata?: Record<string, unknown> | null;
   notes?: string | null;
+  notes?: string | null;
   canvas_layout?: Record<string, unknown> | null;
   created_at: string;
 }
@@ -50,6 +51,7 @@ export interface EntityCreate {
   value: string;
   metadata?: Record<string, unknown> | null;
   notes?: string | null;
+  notes?: string | null;
 }
 
 export interface Relationship {
@@ -58,6 +60,7 @@ export interface Relationship {
   target_entity_id: string;
   type: string;
   metadata?: Record<string, unknown> | null;
+  notes?: string | null;
   created_at: string;
 }
 
@@ -71,6 +74,7 @@ export interface RelationshipCreate {
   target_entity_id: string;
   type: string;
   metadata?: Record<string, unknown> | null;
+  notes?: string | null;
 }
 
 export interface GraphNode {
@@ -78,6 +82,7 @@ export interface GraphNode {
   type: string;
   value: string;
   metadata?: Record<string, unknown> | null;
+  notes?: string | null;
 }
 
 export interface GraphEdge {
@@ -86,6 +91,7 @@ export interface GraphEdge {
   target: string;
   type: string;
   metadata?: Record<string, unknown> | null;
+  notes?: string | null;
 }
 
 export interface GraphData {

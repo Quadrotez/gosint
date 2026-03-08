@@ -9,6 +9,38 @@ import { useSettings, type Theme, type DateFormat, type DateLocale } from '../co
 import { useToast } from '../context/ToastContext';
 import { exportBackup, importBackup, webdavTest, webdavPush, webdavPull, webdavSync, type WebDAVConfig } from '../api';
 
+// ─── HOisted components — must be outside the page component to avoid remounting ──
+
+function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Icon size={15} className="text-[var(--accent)]" />
+        <h2 className="text-xs font-mono font-semibold text-[var(--text-muted)] uppercase tracking-widest">{title}</h2>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function OptionButton({ value, current, label, onClick }: {
+  value: string; current: string; label: string; onClick: () => void;
+}) {
+  const active = current === value;
+  return (
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-mono text-sm transition-all ${
+      active
+        ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-dim)]'
+        : 'border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
+    }`}>
+      {active && <Check size={12} />}
+      {label}
+    </button>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
 export default function SettingsPage() {
   const { t, lang, setLang } = useLang();
   const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate } = useSettings();
@@ -18,7 +50,7 @@ export default function SettingsPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const [backupLoading, setBackupLoading] = useState(false);
 
-  const [wdUrl, setWdUrl] = useState(() => localStorage.getItem('wd_url') || '');
+  const [wdUrl,  setWdUrl]  = useState(() => localStorage.getItem('wd_url')  || '');
   const [wdUser, setWdUser] = useState(() => localStorage.getItem('wd_user') || '');
   const [wdPass, setWdPass] = useState('');
   const [wdFile, setWdFile] = useState(() => localStorage.getItem('wd_file') || 'osint_backup.zip');
@@ -30,36 +62,13 @@ export default function SettingsPage() {
 
   const handleSave = (fn: () => void) => { fn(); setSaved(true); setTimeout(() => setSaved(false), 1500); };
 
-  const Section = ({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) => (
-    <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <Icon size={15} className="text-[var(--accent)]" />
-        <h2 className="text-xs font-mono font-semibold text-[var(--text-muted)] uppercase tracking-widest">{title}</h2>
-      </div>
-      {children}
-    </div>
-  );
-
-  const OptionButton = ({ value, current, label, onClick }: { value: string; current: string; label: string; onClick: () => void }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border font-mono text-sm transition-all ${
-      current === value
-        ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-dim)]'
-        : 'border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]'
-    }`}>
-      {current === value && <Check size={12} />}
-      {label}
-    </button>
-  );
-
   const handleExport = async () => {
     setBackupLoading(true);
     try {
       const blob = await exportBackup();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `osint_backup_${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
+      a.href = url; a.download = `osint_backup_${new Date().toISOString().slice(0, 10)}.zip`; a.click();
       URL.revokeObjectURL(url);
       toast.success(lang === 'ru' ? 'База данных экспортирована' : 'Database exported');
     } catch { toast.error(lang === 'ru' ? 'Ошибка экспорта' : 'Export failed'); }
@@ -79,7 +88,11 @@ export default function SettingsPage() {
     finally { setBackupLoading(false); }
   };
 
-  const saveWdSettings = () => { localStorage.setItem('wd_url', wdUrl); localStorage.setItem('wd_user', wdUser); localStorage.setItem('wd_file', wdFile); };
+  const saveWdSettings = () => {
+    localStorage.setItem('wd_url', wdUrl);
+    localStorage.setItem('wd_user', wdUser);
+    localStorage.setItem('wd_file', wdFile);
+  };
   const wdCfg = (): WebDAVConfig => ({ url: wdUrl, username: wdUser, password: wdPass, filename: wdFile });
 
   const handleWdTest = async () => {
@@ -90,32 +103,25 @@ export default function SettingsPage() {
   };
   const handleWdPush = async () => {
     setWdLoading('push'); saveWdSettings();
-    try { const r = await webdavPush(wdCfg()); toast.success(lang === 'ru' ? `Отправлено ${(r.bytes/1024).toFixed(1)} КБ` : `Pushed ${(r.bytes/1024).toFixed(1)} KB`); }
+    try { const r = await webdavPush(wdCfg()); toast.success(`Pushed ${(r.bytes/1024).toFixed(1)} KB`); }
     catch (e: any) { toast.error(`Push: ${e?.response?.data?.detail || 'error'}`); }
     finally { setWdLoading(null); }
   };
   const handleWdPull = async () => {
     setWdLoading('pull'); saveWdSettings();
-    try { const r = await webdavPull(wdCfg()); const s = r.merged; toast.success(lang === 'ru' ? `Получено: +${s.entities} сущ.` : `Pulled: +${s.entities} entities`); }
+    try { const r = await webdavPull(wdCfg()); toast.success(`Pulled: +${r.merged.entities} entities`); }
     catch (e: any) { toast.error(`Pull: ${e?.response?.data?.detail || 'error'}`); }
     finally { setWdLoading(null); }
   };
   const handleWdSync = async () => {
     setWdLoading('sync'); saveWdSettings();
-    try { const r = await webdavSync(wdCfg()); toast.success(lang === 'ru' ? `Синх.: +${r.pulled.entities} сущ., отпр. ${(r.pushed_bytes/1024).toFixed(1)} КБ` : `Synced: +${r.pulled.entities} merged, pushed ${(r.pushed_bytes/1024).toFixed(1)} KB`); }
+    try { const r = await webdavSync(wdCfg()); toast.success(`Synced: +${r.pulled.entities} merged, pushed ${(r.pushed_bytes/1024).toFixed(1)} KB`); }
     catch (e: any) { toast.error(`Sync: ${e?.response?.data?.detail || 'error'}`); }
     finally { setWdLoading(null); }
   };
 
   const wdDisabled = !wdUrl || !wdUser || !wdPass || wdLoading !== null;
-  const WdBtn = ({ op, icon: Icon, label }: { op: string; icon: any; label: string }) => (
-    <button onClick={op==='test'?handleWdTest:op==='push'?handleWdPush:op==='pull'?handleWdPull:handleWdSync}
-      disabled={wdDisabled}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg border font-mono text-xs transition-all border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed">
-      <Icon size={13} className={wdLoading===op ? 'animate-spin' : ''} />
-      {label}
-    </button>
-  );
+  const inputCls = "w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors";
 
   return (
     <div className="p-4 sm:p-8 max-w-2xl mx-auto">
@@ -137,7 +143,7 @@ export default function SettingsPage() {
       <div className="space-y-4">
         <Section icon={theme === 'dark' ? Moon : Sun} title={t.settings_theme}>
           <div className="flex flex-wrap gap-3">
-            <OptionButton value="dark" current={theme} label={`🌙 ${t.settings_theme_dark}`} onClick={() => handleSave(() => setTheme('dark' as Theme))} />
+            <OptionButton value="dark"  current={theme} label={`🌙 ${t.settings_theme_dark}`}  onClick={() => handleSave(() => setTheme('dark' as Theme))} />
             <OptionButton value="light" current={theme} label={`☀️ ${t.settings_theme_light}`} onClick={() => handleSave(() => setTheme('light' as Theme))} />
           </div>
         </Section>
@@ -156,7 +162,8 @@ export default function SettingsPage() {
               { value: 'short',    label: `📅 ${t.settings_date_short}` },
               { value: 'full',     label: `📆 ${t.settings_date_full}` },
             ] as { value: DateFormat; label: string }[]).map(({ value, label }) => (
-              <OptionButton key={value} value={value} current={dateFormat} label={label} onClick={() => handleSave(() => setDateFormat(value))} />
+              <OptionButton key={value} value={value} current={dateFormat} label={label}
+                onClick={() => handleSave(() => setDateFormat(value))} />
             ))}
           </div>
           {dateFormat !== 'relative' && (
@@ -166,8 +173,8 @@ export default function SettingsPage() {
               </div>
               <div className="flex flex-col gap-2 mb-4">
                 <OptionButton value="dmy" current={dateLocale} label="DD.MM.YYYY — Россия / Европа" onClick={() => handleSave(() => setDateLocale('dmy' as DateLocale))} />
-                <OptionButton value="mdy" current={dateLocale} label="MM/DD/YYYY — USA" onClick={() => handleSave(() => setDateLocale('mdy' as DateLocale))} />
-                <OptionButton value="ymd" current={dateLocale} label="YYYY-MM-DD — ISO 8601" onClick={() => handleSave(() => setDateLocale('ymd' as DateLocale))} />
+                <OptionButton value="mdy" current={dateLocale} label="MM/DD/YYYY — USA"              onClick={() => handleSave(() => setDateLocale('mdy' as DateLocale))} />
+                <OptionButton value="ymd" current={dateLocale} label="YYYY-MM-DD — ISO 8601"         onClick={() => handleSave(() => setDateLocale('ymd' as DateLocale))} />
               </div>
             </>
           )}
@@ -210,15 +217,14 @@ export default function SettingsPage() {
               <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">URL</label>
               <input value={wdUrl} onChange={e => setWdUrl(e.target.value)}
                 placeholder="https://cloud.example.com/remote.php/dav/files/user/osint/"
-                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors" />
+                className={inputCls} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
                   {lang === 'ru' ? 'Логин' : 'Username'}
                 </label>
-                <input value={wdUser} onChange={e => setWdUser(e.target.value)} placeholder="username"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors" />
+                <input value={wdUser} onChange={e => setWdUser(e.target.value)} placeholder="username" className={inputCls} />
               </div>
               <div>
                 <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
@@ -226,9 +232,9 @@ export default function SettingsPage() {
                 </label>
                 <div className="relative">
                   <input value={wdPass} onChange={e => setWdPass(e.target.value)} type={showPass ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    className="w-full pr-8 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors" />
-                  <button onClick={() => setShowPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                    placeholder="••••••••" className={inputCls + ' pr-8'} />
+                  <button onClick={() => setShowPass(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
                     {showPass ? <EyeOff size={12} /> : <Eye size={12} />}
                   </button>
                 </div>
@@ -238,8 +244,7 @@ export default function SettingsPage() {
               <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
                 {lang === 'ru' ? 'Имя файла' : 'Filename'}
               </label>
-              <input value={wdFile} onChange={e => setWdFile(e.target.value)} placeholder="osint_backup.zip"
-                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors" />
+              <input value={wdFile} onChange={e => setWdFile(e.target.value)} placeholder="osint_backup.zip" className={inputCls} />
             </div>
           </div>
 
@@ -251,10 +256,18 @@ export default function SettingsPage() {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <WdBtn op="test" icon={TestTube} label={lang === 'ru' ? 'Тест' : 'Test'} />
-            <WdBtn op="push" icon={UploadCloud} label={lang === 'ru' ? 'Отправить' : 'Push'} />
-            <WdBtn op="pull" icon={DownloadCloud} label={lang === 'ru' ? 'Получить' : 'Pull'} />
-            <WdBtn op="sync" icon={RefreshCw} label={lang === 'ru' ? 'Синхронизировать' : 'Sync'} />
+            {([
+              { op: 'test', icon: TestTube,     label: lang === 'ru' ? 'Тест'           : 'Test',  fn: handleWdTest },
+              { op: 'push', icon: UploadCloud,  label: lang === 'ru' ? 'Отправить'      : 'Push',  fn: handleWdPush },
+              { op: 'pull', icon: DownloadCloud,label: lang === 'ru' ? 'Получить'       : 'Pull',  fn: handleWdPull },
+              { op: 'sync', icon: RefreshCw,    label: lang === 'ru' ? 'Синхронизировать':'Sync',  fn: handleWdSync },
+            ] as {op:string; icon:any; label:string; fn:()=>void}[]).map(({ op, icon: Icon, label, fn }) => (
+              <button key={op} onClick={fn} disabled={wdDisabled}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border font-mono text-xs transition-all border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed">
+                <Icon size={13} className={wdLoading === op ? 'animate-spin' : ''} />
+                {label}
+              </button>
+            ))}
           </div>
 
           <div className="mt-3 flex items-start gap-2 text-[11px] font-mono text-[var(--text-muted)]">

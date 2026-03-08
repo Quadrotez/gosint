@@ -108,6 +108,7 @@ class EntityTypeSchemaBase(BaseModel):
     label_ru: Optional[str] = None
     icon: Optional[str] = None
     color: Optional[str] = None
+    icon_image: Optional[str] = None
     fields: Optional[List[FieldDefinition]] = None
 
 
@@ -120,6 +121,7 @@ class EntityTypeSchemaUpdate(BaseModel):
     label_ru: Optional[str] = None
     icon: Optional[str] = None
     color: Optional[str] = None
+    icon_image: Optional[str] = None
     fields: Optional[List[FieldDefinition]] = None
 
 
@@ -168,10 +170,16 @@ class RelationshipBase(BaseModel):
     target_entity_id: str
     type: str
     metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
 
 
 class RelationshipCreate(RelationshipBase):
     pass
+
+
+class RelationshipUpdate(BaseModel):
+    notes: Optional[str] = None
+    type: Optional[str] = None
 
 
 class RelationshipOut(RelationshipBase):
@@ -201,6 +209,7 @@ class GraphEdge(BaseModel):
     source: str
     target: str
     type: str
+    notes: Optional[str] = None
 
 
 class GraphResponse(BaseModel):
@@ -222,3 +231,48 @@ class StorageInfo(BaseModel):
     used_mb: float
     limit_mb: int
     percent: float
+
+
+# ── DB Config ─────────────────────────────────────────────────────────────────
+
+class DbConfigOut(BaseModel):
+    engine: str          # sqlite, postgresql, mysql
+    url_display: str     # masked URL for display
+    is_sqlite: bool
+
+
+class DbConfigUpdate(BaseModel):
+    database_url: str
+
+# ── Entity Attachments ────────────────────────────────────────────────────────
+
+class AttachmentOut(BaseModel):
+    id: str
+    entity_id: str
+    filename: str
+    mimetype: str
+    size_bytes: int
+    data_b64: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AttachmentCreate(BaseModel):
+    filename: str
+    mimetype: str
+    size_bytes: int
+    data_b64: str   # pure base64, no data URI prefix
+
+
+# ── DB Config ─────────────────────────────────────────────────────────────────
+
+class DbConfigOut(BaseModel):
+    engine: str          # sqlite | postgresql | mysql
+    url_display: str     # masked connection string
+    is_sqlite: bool
+    pending_url: Optional[str] = None   # saved but not yet applied
+
+class DbConfigUpdate(BaseModel):
+    database_url: str    # full URL; empty = reset to SQLite default

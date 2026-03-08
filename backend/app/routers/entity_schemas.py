@@ -46,5 +46,6 @@ def delete_schema(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    """Delete a schema — builtin types can also be deleted to remove them from this user's type list."""
     if not crud.delete_entity_type_schema(db, schema_id, user.id):
-        raise HTTPException(404, "Schema not found or is built-in")
+        raise HTTPException(404, "Schema not found")

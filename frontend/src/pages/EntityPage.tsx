@@ -15,7 +15,8 @@ import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import MetadataEditor from '../components/ui/MetadataEditor';
 import MiniGraph from '../components/graph/MiniGraph';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
-import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink } from 'lucide-react';
+import { getAttachments, uploadAttachment, deleteAttachment, type AttachmentOut } from '../api';
 
 export default function EntityPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,13 +119,13 @@ export default function EntityPage() {
   };
 
   const startEditNotes = () => {
-    setNotesText(meta.notes ?? '');
+    setNotesText(entity.notes ?? '');
     setEditingNotes(true);
     setNotesTab('write');
   };
 
   const saveNotes = () => {
-    updateMutation.mutate({ metadata: { ...meta, notes: notesText } });
+    updateMutation.mutate({ notes: notesText });
   };
 
   const displayName = isPerson
@@ -406,9 +407,9 @@ export default function EntityPage() {
                 </div>
               )
             ) : (
-              meta.notes ? (
+              entity.notes ? (
                 <div className="p-3 rounded-lg" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-                  <MarkdownRenderer content={meta.notes} />
+                  <MarkdownRenderer content={entity.notes} />
                 </div>
               ) : (
                 <p className="text-xs font-mono italic" style={{ color: 'var(--text-muted)' }}>{t.notes_empty}</p>
@@ -472,6 +473,9 @@ export default function EntityPage() {
             </div>
           </div>
         </div>
+
+        {/* Attachments section */}
+        <EntityAttachments entityId={id!} lang={lang} />
 
         {/* Right column */}
         <div className="space-y-4">
@@ -643,6 +647,113 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Entity Attachments ────────────────────────────────────────────────────────
+
+function EntityAttachments({ entityId, lang }: { entityId: string; lang: string }) {
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const { data: attachments = [] } = useQuery<AttachmentOut[]>({
+    queryKey: ['attachments', entityId],
+    queryFn: () => getAttachments(entityId),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deleteAttachment,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['attachments', entityId] }),
+  });
+
+  const handleFileUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const data_b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res((r.result as string).split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      await uploadAttachment(entityId, {
+        filename: file.name,
+        mimetype: file.type || 'application/octet-stream',
+        size_bytes: file.size,
+        data_b64,
+      });
+      qc.invalidateQueries({ queryKey: ['attachments', entityId] });
+    } catch (e) { console.error(e); }
+    finally { setUploading(false); }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/1024/1024).toFixed(1)} MB`;
+  };
+
+  const isImage = (mime: string) => mime.startsWith('image/');
+
+  return (
+    <div className="rounded-xl p-5 mt-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Paperclip size={13} style={{ color: 'var(--accent)' }} />
+          <h2 className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+            {lang === 'ru' ? `Вложения (${attachments.length})` : `Attachments (${attachments.length})`}
+          </h2>
+        </div>
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-1 text-xs font-mono transition-colors disabled:opacity-40"
+          style={{ color: 'var(--accent)' }}>
+          <Plus size={11} /> {lang === 'ru' ? 'Прикрепить файл' : 'Attach file'}
+        </button>
+        <input ref={fileRef} type="file" className="hidden"
+          onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+      </div>
+
+      {attachments.length > 0 && (
+        <div className="space-y-1.5">
+          {attachments.map(att => (
+            <div key={att.id} className="flex items-center gap-3 p-2.5 rounded-lg group"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              {isImage(att.mimetype) ? (
+                <img src={`data:${att.mimetype};base64,${att.data_b64}`} alt=""
+                  className="w-10 h-10 rounded object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'var(--border)' }}>
+                  <Paperclip size={16} style={{ color: 'var(--text-muted)' }} />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-mono truncate" style={{ color: 'var(--text-primary)' }}>{att.filename}</div>
+                <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                  {formatSize(att.size_bytes)} · {att.mimetype}
+                </div>
+              </div>
+              <a href={`data:${att.mimetype};base64,${att.data_b64}`} download={att.filename}
+                className="p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all"
+                style={{ color: 'var(--text-muted)' }}>
+                <Download size={13} />
+              </a>
+              <button onClick={() => deleteMut.mutate(att.id)}
+                className="p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all"
+                style={{ color: 'var(--text-muted)' }}>
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {attachments.length === 0 && !uploading && (
+        <p className="text-xs font-mono italic" style={{ color: 'var(--text-muted)' }}>
+          {lang === 'ru' ? 'Нет вложений' : 'No attachments'}
+        </p>
+      )}
+      {uploading && <p className="text-xs font-mono animate-pulse" style={{ color: 'var(--text-muted)' }}>Uploading…</p>}
     </div>
   );
 }

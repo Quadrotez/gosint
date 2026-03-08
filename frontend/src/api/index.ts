@@ -177,3 +177,62 @@ export const webdavPull = (cfg: WebDAVConfig) =>
 
 export const webdavSync = (cfg: WebDAVConfig) =>
   api.post<{ ok: boolean; pulled: Record<string, number>; pushed_bytes: number }>('/webdav/sync', cfg).then(r => r.data);
+
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export interface AttachmentOut {
+  id: string;
+  entity_id: string;
+  filename: string;
+  mimetype: string;
+  size_bytes: number;
+  data_b64: string;
+  created_at: string;
+}
+
+export async function getAttachments(entityId: string): Promise<AttachmentOut[]> {
+  const r = await api.get(`/attachments/entity/${entityId}`);
+  return r.data;
+}
+
+export async function uploadAttachment(entityId: string, body: {
+  filename: string; mimetype: string; size_bytes: number; data_b64: string;
+}): Promise<AttachmentOut> {
+  const r = await api.post(`/attachments/entity/${entityId}`, body);
+  return r.data;
+}
+
+export async function deleteAttachment(attId: string): Promise<void> {
+  await api.delete(`/attachments/${attId}`);
+}
+
+export function getAttachmentDownloadUrl(attId: string): string {
+  return `${api.defaults.baseURL}/attachments/${attId}/download`;
+}
+
+// ── Relationship notes ────────────────────────────────────────────────────────
+
+export async function updateRelationship(relId: string, data: { notes?: string; type?: string }) {
+  const r = await api.patch(`/relationships/${relId}`, data);
+  return r.data;
+}
+
+// ── DB Config ─────────────────────────────────────────────────────────────────
+
+export interface DbConfigOut {
+  engine: string;
+  url_display: string;
+  is_sqlite: boolean;
+  pending_url?: string | null;
+}
+
+export async function getDbConfig(): Promise<DbConfigOut> {
+  const r = await api.get('/admin/db-config');
+  return r.data;
+}
+
+export async function updateDbConfig(database_url: string): Promise<DbConfigOut> {
+  const r = await api.put('/admin/db-config', { database_url });
+  return r.data;
+}

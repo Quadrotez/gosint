@@ -1,28 +1,30 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
 
-# Resolve DB path relative to this file so it works regardless of cwd.
-# Default: <project_root>/backend/data/gosint.db
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_DEFAULT_DB_DIR = os.path.join(_HERE, "..", "data")
-_DEFAULT_DB_PATH = os.path.join(_DEFAULT_DB_DIR, "gosint.db")
+_db_dir = os.path.join(_HERE, "..", "data")
+os.makedirs(_db_dir, exist_ok=True)
+_default_url = f"sqlite:///{os.path.join(_db_dir, 'gosint.db')}"
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
+# Allow override via env var or .env.db file next to this package
+_env_db_file = os.path.join(_HERE, ".env.db")
+if os.path.exists(_env_db_file):
+    with open(_env_db_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line.startswith("DATABASE_URL="):
+                os.environ["DATABASE_URL"] = _line[len("DATABASE_URL="):]
+                break
 
-# Auto-create the data directory for SQLite if it doesn't exist
-if DATABASE_URL.startswith("sqlite:///"):
-    _db_file = DATABASE_URL[len("sqlite:///"):]
-    _db_dir = os.path.dirname(_db_file)
-    if _db_dir:
-        os.makedirs(_db_dir, exist_ok=True)
+DATABASE_URL = os.getenv("DATABASE_URL", _default_url)
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 
+_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    _kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
