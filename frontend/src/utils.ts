@@ -85,6 +85,12 @@ export const GENERIC_RELATIONSHIP_TYPES: { value: string; label_en: string; labe
 
 // Built-in field presets for entity types
 export const BUILTIN_FIELD_PRESETS: Record<string, { key: string; label_en: string; label_ru: string; type: 'text' | 'date' | 'url' | 'number' }[]> = {
+  person: [
+    { key: 'last_name',   label_en: 'Last Name',    label_ru: 'Фамилия',    type: 'text' },
+    { key: 'first_name',  label_en: 'First Name',   label_ru: 'Имя',        type: 'text' },
+    { key: 'middle_name', label_en: 'Middle Name',  label_ru: 'Отчество',   type: 'text' },
+    { key: 'dob',         label_en: 'Date of Birth',label_ru: 'Дата рождения', type: 'date' },
+  ],
   address: [
     { key: 'country',    label_en: 'Country',          label_ru: 'Страна',          type: 'text' },
     { key: 'region',     label_en: 'Region / Oblast',  label_ru: 'Регион / Область',type: 'text' },

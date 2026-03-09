@@ -2,8 +2,22 @@ export interface FieldDefinition {
   name: string;
   label_en: string;
   label_ru?: string;
-  field_type: 'text' | 'date' | 'url' | 'number';
+  field_type: 'text' | 'date' | 'url' | 'number' | 'entity' | 'entities';
   required: boolean;
+  entity_type_filter?: string; // optional filter for entity field type
+}
+
+export interface RelationshipTypeSchema {
+  id: string;
+  name: string;
+  label_en: string;
+  label_ru?: string;
+  description?: string | null;
+  emoji?: string | null;
+  color?: string | null;
+  fields?: FieldDefinition[];
+  is_builtin: boolean;
+  created_at: string;
 }
 
 export interface EntityTypeSchema {

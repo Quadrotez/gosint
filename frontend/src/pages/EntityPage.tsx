@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getEntity, getEntityRelationships, createRelationship,
-  deleteRelationship, getEntities, updateEntity,
+  deleteRelationship, getEntities, updateEntity, getRelationshipTypeSchemas,
 } from '../api';
 import {
   PERSON_RELATIONSHIP_TYPES, GENERIC_RELATIONSHIP_TYPES, BUILTIN_FIELD_PRESETS,
@@ -14,7 +14,7 @@ import { useEntitySchemas } from '../context/EntitySchemasContext';
 import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import MetadataEditor from '../components/ui/MetadataEditor';
 import MiniGraph from '../components/graph/MiniGraph';
-import MarkdownRenderer from '../components/ui/MarkdownRenderer';
+import DatePicker from '../components/ui/DatePicker';
 import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink } from 'lucide-react';
 import { getAttachments, uploadAttachment, deleteAttachment, type AttachmentOut } from '../api';
 
@@ -23,13 +23,17 @@ export default function EntityPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t, lang } = useLang();
-  const { formatDate } = useSettings();
+  const { formatDate, dateLocale } = useSettings();
   const { getColor, schemas } = useEntitySchemas();
   const [addRelOpen, setAddRelOpen] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
 
   const [editingPerson, setEditingPerson] = useState(false);
   const [personEdits, setPersonEdits] = useState<Record<string, string>>({});
+
+  // Extra (non-structural) fields editing for person
+  const [editingExtras, setEditingExtras] = useState(false);
+  const [extrasEdits, setExtrasEdits] = useState<Record<string, string>>({});
 
   // Notes state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -245,10 +249,11 @@ export default function EntityPage() {
                 <div className="w-48">
                   <div className="text-[10px] font-mono mb-1" style={{ color: 'var(--text-muted)' }}>{t.ep_person_dob}</div>
                   {editingPerson ? (
-                    <input type="date" value={personEdits.dob ?? ''}
-                      onChange={e => setPersonEdits(prev => ({ ...prev, dob: e.target.value }))}
-                      className="w-full px-2.5 py-1.5 rounded font-mono text-sm outline-none"
-                      style={{ ...inputStyle, colorScheme: 'dark' }}
+                    <DatePicker
+                      value={personEdits.dob ?? ''}
+                      onChange={v => setPersonEdits(prev => ({ ...prev, dob: v }))}
+                      dateLocale={dateLocale}
+                      lang={lang}
                     />
                   ) : (
                     <div className="text-sm font-mono" style={{ color: meta.dob ? 'var(--text-primary)' : 'var(--text-muted)' }}>
@@ -268,21 +273,81 @@ export default function EntityPage() {
                 )}
               </div>
 
-              {/* Extra fields */}
+              {/* Extra (schema + custom) fields — editable */}
               {(() => {
                 const structural = new Set(['first_name', 'last_name', 'middle_name', 'dob', 'photo', 'notes', '_board_notes']);
                 const extras = Object.entries(meta).filter(([k]) => !structural.has(k));
-                if (!extras.length) return null;
+                // Also include schema-defined extra fields that may not have values yet
+                const schemaExtras = (customSchema?.fields || []).filter(f => !structural.has(f.name));
+                const allKeys = Array.from(new Set([...schemaExtras.map(f => f.name), ...extras.map(([k]) => k)]));
+                if (!allKeys.length) return null;
+
+                const startExtrasEdit = () => {
+                  const init: Record<string, string> = {};
+                  allKeys.forEach(k => { init[k] = meta[k] ?? ''; });
+                  setExtrasEdits(init);
+                  setEditingExtras(true);
+                };
+                const saveExtras = () => {
+                  const newMeta = { ...meta };
+                  allKeys.forEach(k => {
+                    const v = extrasEdits[k];
+                    if (v) newMeta[k] = v; else delete newMeta[k];
+                  });
+                  updateMutation.mutate({ metadata: newMeta });
+                  setEditingExtras(false);
+                };
+
                 return (
                   <div className="border-t px-6 py-4" style={{ borderColor: 'var(--border)' }}>
-                    <div className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>{t.ep_custom_fields}</div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {extras.map(([k, v]) => (
-                        <div key={k} className="flex gap-3">
-                          <span className="text-xs font-mono w-28 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{k}</span>
-                          <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{String(v)}</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{t.ep_custom_fields}</div>
+                      {!editingExtras ? (
+                        <button onClick={startExtrasEdit} className="flex items-center gap-1 text-xs font-mono transition-colors" style={{ color: 'var(--accent)' }}>
+                          <Edit2 size={11} /> {lang === 'ru' ? 'Изменить' : 'Edit'}
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button onClick={saveExtras} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+                            <Check size={10} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
+                          </button>
+                          <button onClick={() => setEditingExtras(false)} className="px-2.5 py-1 font-mono text-xs rounded border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                            {lang === 'ru' ? 'Отмена' : 'Cancel'}
+                          </button>
                         </div>
-                      ))}
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      {allKeys.map(k => {
+                        const schemaDef = schemaExtras.find(f => f.name === k);
+                        const label = schemaDef ? ((lang === 'ru' && schemaDef.label_ru) ? schemaDef.label_ru : schemaDef.label_en) : k;
+                        return (
+                          <div key={k}>
+                            <div className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
+                            {editingExtras ? (
+                              schemaDef?.field_type === 'date' ? (
+                                <DatePicker
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
+                                  dateLocale={dateLocale}
+                                  lang={lang}
+                                />
+                              ) : (
+                                <input
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={e => setExtrasEdits(prev => ({ ...prev, [k]: e.target.value }))}
+                                  className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
+                                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
+                                />
+                              )
+                            ) : (
+                              <span className="text-xs font-mono" style={{ color: meta[k] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                                {meta[k] ? String(meta[k]) : '—'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -302,36 +367,106 @@ export default function EntityPage() {
             </div>
           )}
 
-          {/* Metadata editor (non-person, with built-in presets) */}
-          {!isPerson && (
-            <div className="rounded-xl p-5" style={cardStyle}>
-              {builtinPreset && (
-                <div className="mb-3">
-                  <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
-                    {lang === 'ru' ? 'Поля адреса' : 'Structured fields'}
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                    {builtinPreset.map(field => (
-                      <div key={field.key}>
-                        <div className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {lang === 'ru' ? field.label_ru : field.label_en}
+          {/* Metadata editor (non-person, with built-in presets and schema fields) */}
+          {!isPerson && (() => {
+            // Merge schema fields + builtin preset into one editable section
+            const schemaFields = customSchema?.fields || [];
+            const presetFields = builtinPreset || [];
+            // Combined unique keys (schema takes priority for labels)
+            const allStructured: { key: string; label: string; type: string }[] = [];
+            const seen = new Set<string>();
+            schemaFields.forEach(f => {
+              if (!seen.has(f.name)) {
+                seen.add(f.name);
+                allStructured.push({ key: f.name, label: (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en, type: f.field_type });
+              }
+            });
+            presetFields.forEach(f => {
+              if (!seen.has(f.key)) {
+                seen.add(f.key);
+                allStructured.push({ key: f.key, label: lang === 'ru' ? f.label_ru : f.label_en, type: f.type });
+              }
+            });
+            return (
+              <div className="rounded-xl p-5" style={cardStyle}>
+                {allStructured.length > 0 && (() => {
+                  const startStructEdit = () => {
+                    const init: Record<string, string> = {};
+                    allStructured.forEach(f => { init[f.key] = meta[f.key] ?? ''; });
+                    setExtrasEdits(prev => ({ ...prev, ...init }));
+                    setEditingExtras(true);
+                  };
+                  const saveStructEdit = () => {
+                    const newMeta = { ...meta };
+                    allStructured.forEach(f => {
+                      const v = extrasEdits[f.key];
+                      if (v) newMeta[f.key] = v; else delete newMeta[f.key];
+                    });
+                    updateMutation.mutate({ metadata: newMeta });
+                    setEditingExtras(false);
+                  };
+                  return (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                          {lang === 'ru' ? 'Поля' : 'Structured fields'}
                         </div>
-                        <div className="text-xs font-mono" style={{ color: meta[field.key] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                          {meta[field.key] || '—'}
-                        </div>
+                        {!editingExtras ? (
+                          <button onClick={startStructEdit} className="flex items-center gap-1 text-xs font-mono" style={{ color: 'var(--accent)' }}>
+                            <Edit2 size={11} /> {lang === 'ru' ? 'Изменить' : 'Edit'}
+                          </button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button onClick={saveStructEdit} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+                              <Check size={10} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
+                            </button>
+                            <button onClick={() => setEditingExtras(false)} className="px-2.5 py-1 font-mono text-xs rounded border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                              {lang === 'ru' ? 'Отмена' : 'Cancel'}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 h-px" style={{ background: 'var(--border)' }} />
-                </div>
-              )}
-              <MetadataEditor
-                value={(entity.metadata || {}) as Record<string, unknown>}
-                onChange={(newMeta) => updateMutation.mutate({ metadata: newMeta })}
-                editable
-              />
-            </div>
-          )}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        {allStructured.map(field => (
+                          <div key={field.key}>
+                            <div className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--text-muted)' }}>{field.label}</div>
+                            {editingExtras ? (
+                              field.type === 'date' ? (
+                                <DatePicker
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
+                                  dateLocale={dateLocale}
+                                  lang={lang}
+                                />
+                              ) : (
+                                <input
+                                  type={field.type === 'number' ? 'number' : 'text'}
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={e => setExtrasEdits(prev => ({ ...prev, [field.key]: e.target.value }))}
+                                  className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
+                                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
+                                />
+                              )
+                            ) : (
+                              <div className="text-xs font-mono" style={{ color: meta[field.key] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                                {meta[field.key] || '—'}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 h-px" style={{ background: 'var(--border)' }} />
+                    </div>
+                  );
+                })()}
+                <MetadataEditor
+                  value={(entity.metadata || {}) as Record<string, unknown>}
+                  onChange={(newMeta) => updateMutation.mutate({ metadata: newMeta })}
+                  editable
+                />
+              </div>
+            );
+          })()}
 
           {/* Notes section */}
           <div className="rounded-xl p-5" style={cardStyle}>
@@ -546,11 +681,33 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
   lang: string;
 }) {
   const [targetId, setTargetId] = useState('');
+  const [targetSearch, setTargetSearch] = useState('');
+  const [targetDropOpen, setTargetDropOpen] = useState(false);
   const [type, setType] = useState('');
+  const [relTypeSearch, setRelTypeSearch] = useState('');
   const [direction, setDirection] = useState<'out' | 'in'>('out');
 
-  const isPerson = entityType === 'person';
-  const relTypes = isPerson ? PERSON_RELATIONSHIP_TYPES : GENERIC_RELATIONSHIP_TYPES;
+  // Load custom relationship types
+  const { data: customRelTypes = [] } = useQuery({
+    queryKey: ['relationship-type-schemas'],
+    queryFn: getRelationshipTypeSchemas,
+  });
+
+  // Build unified rel types list from custom types (seeded from builtins too)
+  const relTypes = customRelTypes.map((rt: any) => ({
+    value: rt.name,
+    label_en: rt.label_en,
+    label_ru: rt.label_ru || rt.label_en,
+    emoji: rt.emoji || '🔗',
+    color: rt.color,
+  }));
+
+  const filteredRelTypes = relTypeSearch.trim()
+    ? relTypes.filter((rt: any) => {
+        const q = relTypeSearch.toLowerCase();
+        return rt.value.includes(q) || rt.label_en.toLowerCase().includes(q) || rt.label_ru?.toLowerCase().includes(q);
+      })
+    : relTypes;
 
   const handleSubmit = () => {
     if (!targetId || !type) return;
@@ -560,6 +717,21 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
       type,
     });
   };
+
+  const getEntityLabel = (e: any) => {
+    const eMeta = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person'
+      ? [eMeta.last_name, eMeta.first_name].filter(Boolean).join(' ') || e.value
+      : e.value;
+  };
+
+  const filteredEntities = entities.filter(e => {
+    if (!targetSearch.trim()) return true;
+    const q = targetSearch.toLowerCase();
+    return getEntityLabel(e).toLowerCase().includes(q) || e.type.toLowerCase().includes(q);
+  }).slice(0, 30);
+
+  const selectedEntity = targetId ? entities.find(e => e.id === targetId) : null;
 
   const modalStyle = {
     background: 'var(--bg-card)',
@@ -576,7 +748,7 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative rounded-xl p-6 w-full max-w-md"
+        className="relative rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
         style={modalStyle}
         onClick={e => e.stopPropagation()}
       >
@@ -585,6 +757,7 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
           <button onClick={onClose} style={{ color: 'var(--text-muted)' }}><X size={16} /></button>
         </div>
         <div className="space-y-4">
+          {/* Direction */}
           <div>
             <label className="text-xs font-mono mb-1.5 block" style={{ color: 'var(--text-muted)' }}>{t.rel_direction}</label>
             <div className="flex gap-2">
@@ -601,40 +774,91 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
             </div>
           </div>
 
+          {/* Relationship type with search */}
           <div>
             <label className="text-xs font-mono mb-1.5 block" style={{ color: 'var(--text-muted)' }}>{t.rel_type}</label>
-            <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-1">
-              {relTypes.map(rt => (
+            <input
+              value={relTypeSearch}
+              onChange={e => setRelTypeSearch(e.target.value)}
+              placeholder={lang === 'ru' ? '🔍 Поиск типа...' : '🔍 Search type...'}
+              className="w-full px-3 py-2 rounded-lg font-mono text-xs outline-none mb-2"
+              style={inputStyle}
+            />
+            <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto pr-1">
+              {filteredRelTypes.map((rt: any) => (
                 <button
                   key={rt.value}
                   onClick={() => setType(rt.value)}
                   className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-mono border transition-all text-left"
                   style={type === rt.value
-                    ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--accent-dim)' }
+                    ? { borderColor: rt.color || 'var(--accent)', color: rt.color || 'var(--accent)', background: `${rt.color || 'var(--accent)'}22` }
                     : { borderColor: 'var(--border-light)', color: 'var(--text-muted)', background: 'var(--bg-secondary)' }}
                 >
                   <span>{rt.emoji}</span>
                   <span className="truncate">{lang === 'ru' ? rt.label_ru : rt.label_en}</span>
                 </button>
               ))}
+              {filteredRelTypes.length === 0 && (
+                <p className="col-span-2 text-xs font-mono py-2" style={{ color: 'var(--text-muted)' }}>
+                  {lang === 'ru' ? 'Не найдено' : 'No types found'}
+                </p>
+              )}
             </div>
           </div>
 
+          {/* Target entity with search */}
           <div>
             <label className="text-xs font-mono mb-1.5 block" style={{ color: 'var(--text-muted)' }}>{t.rel_target}</label>
-            <select value={targetId} onChange={e => setTargetId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none"
-              style={inputStyle}
-            >
-              <option value="">{t.rel_target_placeholder}</option>
-              {entities.map(e => {
-                const eMeta = (e.metadata || {}) as Record<string, string>;
-                const label = e.type === 'person'
-                  ? [eMeta.last_name, eMeta.first_name].filter(Boolean).join(' ') || e.value
-                  : e.value;
-                return <option key={e.id} value={e.id}>[{e.type}] {label}</option>;
-              })}
-            </select>
+            <div className="relative">
+              <div
+                onClick={() => setTargetDropOpen(v => !v)}
+                className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none cursor-pointer flex items-center justify-between"
+                style={{ ...inputStyle, borderRadius: targetDropOpen ? '8px 8px 0 0' : '8px' }}
+              >
+                {selectedEntity ? (
+                  <span className="flex items-center gap-2 text-xs">
+                    <span style={{ color: 'var(--text-muted)' }}>[{selectedEntity.type}]</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{getEntityLabel(selectedEntity)}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{t.rel_target_placeholder}</span>
+                )}
+                <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>▼</span>
+              </div>
+              {targetDropOpen && (
+                <div className="absolute z-10 w-full border rounded-b-lg shadow-xl overflow-hidden"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-light)', borderTop: 'none' }}>
+                  <div className="p-2 border-b" style={{ borderColor: 'var(--border-light)' }}>
+                    <input
+                      autoFocus
+                      value={targetSearch}
+                      onChange={e => setTargetSearch(e.target.value)}
+                      placeholder={lang === 'ru' ? '🔍 Поиск сущности...' : '🔍 Search entity...'}
+                      className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none"
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredEntities.map(e => (
+                      <button
+                        key={e.id}
+                        onClick={() => { setTargetId(e.id); setTargetDropOpen(false); setTargetSearch(''); }}
+                        className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[var(--bg-secondary)] flex items-center gap-2"
+                        style={{ color: e.id === targetId ? 'var(--accent)' : 'var(--text-primary)' }}
+                      >
+                        <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>[{e.type}]</span>
+                        {getEntityLabel(e)}
+                      </button>
+                    ))}
+                    {filteredEntities.length === 0 && (
+                      <p className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {lang === 'ru' ? 'Не найдено' : 'No results'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <button

@@ -236,3 +236,30 @@ export async function updateDbConfig(database_url: string): Promise<DbConfigOut>
   const r = await api.put('/admin/db-config', { database_url });
   return r.data;
 }
+
+// ── Relationship Type Schemas ─────────────────────────────────────────────────
+
+export async function getRelationshipTypeSchemas() {
+  const r = await api.get('/relationship-types');
+  return r.data;
+}
+
+export async function createRelationshipTypeSchema(data: {
+  name: string; label_en: string; label_ru?: string;
+  description?: string; emoji?: string; color?: string; fields?: any[];
+}) {
+  const r = await api.post('/relationship-types', data);
+  return r.data;
+}
+
+export async function updateRelationshipTypeSchema(id: string, data: {
+  label_en?: string; label_ru?: string; description?: string;
+  emoji?: string; color?: string; fields?: any[];
+}) {
+  const r = await api.patch(`/relationship-types/${id}`, data);
+  return r.data;
+}
+
+export async function deleteRelationshipTypeSchema(id: string) {
+  await api.delete(`/relationship-types/${id}`);
+}

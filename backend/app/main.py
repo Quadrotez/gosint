@@ -5,6 +5,7 @@ from sqlalchemy import text, inspect
 from .database import engine
 from . import models
 from .routers import entities, relationships, search, import_data, stats, entity_schemas, backup, webdav_sync, attachments
+from .routers import relationship_types as rel_types_module
 from .routers import auth as auth_router
 from .routers import admin as admin_router
 from .auth import hash_password
@@ -52,6 +53,27 @@ def run_migrations():
         add_col("entity_type_schemas", "user_id", "TEXT")
         add_col("entity_type_schemas", "icon_image", "TEXT")
         add_col("site_settings", "database_url", "TEXT")
+        # Relationship type schemas table (new)
+        if "relationship_type_schemas" not in inspector.get_table_names():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE relationship_type_schemas (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        label_en TEXT NOT NULL,
+                        label_ru TEXT,
+                        description TEXT,
+                        emoji TEXT,
+                        color TEXT,
+                        fields TEXT,
+                        is_builtin BOOLEAN DEFAULT 0,
+                        created_at DATETIME
+                    )
+                """))
+                conn.commit()
+            except Exception:
+                pass
 
 
 def _seed_builtin_schemas(db, user_id: str):
@@ -96,7 +118,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 for router in [auth_router.router, admin_router.router, entities.router, relationships.router,
                search.router, import_data.router, stats.router, entity_schemas.router,
-               backup.router, webdav_sync.router, attachments.router]:
+               backup.router, webdav_sync.router, attachments.router, rel_types_module.router]:
     app.include_router(router, prefix="/api")
 
 

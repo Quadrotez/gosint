@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Settings, Sun, Moon, Clock, Globe, Check, Download, Upload,
   Cloud, UploadCloud, DownloadCloud, RefreshCw, TestTube, Wifi, WifiOff,
@@ -39,17 +39,9 @@ function OptionButton({ value, current, label, onClick }: {
   );
 }
 
-// ─── Page ──────────────────────────────────────────────────────────────────────
+// ─── WebDAV section — memoized so it doesn't remount on parent re-renders ─────
 
-export default function SettingsPage() {
-  const { t, lang, setLang } = useLang();
-  const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate } = useSettings();
-  const toast = useToast();
-  const [saved, setSaved] = useState(false);
-
-  const importRef = useRef<HTMLInputElement>(null);
-  const [backupLoading, setBackupLoading] = useState(false);
-
+const WebDAVSection = React.memo(function WebDAVSection({ lang, toast }: { lang: string; toast: any }) {
   const [wdUrl,  setWdUrl]  = useState(() => localStorage.getItem('wd_url')  || '');
   const [wdUser, setWdUser] = useState(() => localStorage.getItem('wd_user') || '');
   const [wdPass, setWdPass] = useState('');
@@ -58,35 +50,7 @@ export default function SettingsPage() {
   const [wdConnected, setWdConnected] = useState<boolean | null>(null);
   const [showPass, setShowPass] = useState(false);
 
-  const now = new Date().toISOString();
-
-  const handleSave = (fn: () => void) => { fn(); setSaved(true); setTimeout(() => setSaved(false), 1500); };
-
-  const handleExport = async () => {
-    setBackupLoading(true);
-    try {
-      const blob = await exportBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `osint_backup_${new Date().toISOString().slice(0, 10)}.zip`; a.click();
-      URL.revokeObjectURL(url);
-      toast.success(lang === 'ru' ? 'База данных экспортирована' : 'Database exported');
-    } catch { toast.error(lang === 'ru' ? 'Ошибка экспорта' : 'Export failed'); }
-    finally { setBackupLoading(false); }
-  };
-
-  const handleImportFile = async (file: File) => {
-    if (!file.name.endsWith('.zip')) { toast.error(lang === 'ru' ? 'Нужен .zip файл' : 'Select a .zip file'); return; }
-    setBackupLoading(true);
-    try {
-      const result = await importBackup(file);
-      const s = result.imported;
-      toast.success(lang === 'ru'
-        ? `Импортировано: ${s.entities} сущ., ${s.relationships} связей (пропущено: ${s.skipped})`
-        : `Imported: ${s.entities} entities, ${s.relationships} rels (skipped: ${s.skipped})`);
-    } catch { toast.error(lang === 'ru' ? 'Ошибка импорта' : 'Import failed'); }
-    finally { setBackupLoading(false); }
-  };
+  const inputCls = "w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors";
 
   const saveWdSettings = () => {
     localStorage.setItem('wd_url', wdUrl);
@@ -121,7 +85,120 @@ export default function SettingsPage() {
   };
 
   const wdDisabled = !wdUrl || !wdUser || !wdPass || wdLoading !== null;
-  const inputCls = "w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-xs font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors";
+
+  return (
+    <Section icon={Cloud} title={lang === 'ru' ? 'Синхронизация WebDAV' : 'WebDAV Sync'}>
+      <p className="text-xs font-mono text-[var(--text-muted)] mb-4">
+        {lang === 'ru'
+          ? 'Двусторонняя синхронизация с Nextcloud, ownCloud или любым WebDAV-сервером.'
+          : 'Bidirectional sync with Nextcloud, ownCloud or any WebDAV server.'}
+      </p>
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">URL</label>
+          <input value={wdUrl} onChange={e => setWdUrl(e.target.value)}
+            placeholder="https://cloud.example.com/remote.php/dav/files/user/osint/"
+            className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
+              {lang === 'ru' ? 'Логин' : 'Username'}
+            </label>
+            <input value={wdUser} onChange={e => setWdUser(e.target.value)} placeholder="username" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
+              {lang === 'ru' ? 'Пароль' : 'Password'}
+            </label>
+            <div className="relative">
+              <input value={wdPass} onChange={e => setWdPass(e.target.value)} type={showPass ? 'text' : 'password'}
+                placeholder="••••••••" className={inputCls + ' pr-8'} />
+              <button onClick={() => setShowPass(v => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                {showPass ? <EyeOff size={12} /> : <Eye size={12} />}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
+            {lang === 'ru' ? 'Имя файла' : 'Filename'}
+          </label>
+          <input value={wdFile} onChange={e => setWdFile(e.target.value)} placeholder="osint_backup.zip" className={inputCls} />
+        </div>
+      </div>
+
+      {wdConnected !== null && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 text-xs font-mono border ${wdConnected ? 'bg-[#00ff8810] border-[#00ff8840] text-[#00ff88]' : 'bg-[#ff444410] border-[#ff444440] text-[#ff6666]'}`}>
+          {wdConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
+          {wdConnected ? (lang === 'ru' ? 'Подключение работает' : 'Connection OK') : (lang === 'ru' ? 'Не удалось подключиться' : 'Connection failed')}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {([
+          { op: 'test', icon: TestTube,     label: lang === 'ru' ? 'Тест'           : 'Test',  fn: handleWdTest },
+          { op: 'push', icon: UploadCloud,  label: lang === 'ru' ? 'Отправить'      : 'Push',  fn: handleWdPush },
+          { op: 'pull', icon: DownloadCloud,label: lang === 'ru' ? 'Получить'       : 'Pull',  fn: handleWdPull },
+          { op: 'sync', icon: RefreshCw,    label: lang === 'ru' ? 'Синхронизировать':'Sync',  fn: handleWdSync },
+        ] as {op:string; icon:any; label:string; fn:()=>void}[]).map(({ op, icon: Icon, label, fn }) => (
+          <button key={op} onClick={fn} disabled={wdDisabled}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border font-mono text-xs transition-all border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed">
+            <Icon size={13} className={wdLoading === op ? 'animate-spin' : ''} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-start gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+        <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+        {lang === 'ru' ? 'Пароль не сохраняется между сессиями.' : 'Password is never persisted — re-enter each session.'}
+      </div>
+    </Section>
+  );
+});
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
+export default function SettingsPage() {
+  const { t, lang, setLang } = useLang();
+  const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate } = useSettings();
+  const toast = useToast();
+  const [saved, setSaved] = useState(false);
+
+  const importRef = useRef<HTMLInputElement>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+
+  const now = new Date().toISOString();
+
+  const handleSave = (fn: () => void) => { fn(); setSaved(true); setTimeout(() => setSaved(false), 1500); };
+
+  const handleExport = async () => {
+    setBackupLoading(true);
+    try {
+      const blob = await exportBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `osint_backup_${new Date().toISOString().slice(0, 10)}.zip`; a.click();
+      URL.revokeObjectURL(url);
+      toast.success(lang === 'ru' ? 'База данных экспортирована' : 'Database exported');
+    } catch { toast.error(lang === 'ru' ? 'Ошибка экспорта' : 'Export failed'); }
+    finally { setBackupLoading(false); }
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (!file.name.endsWith('.zip')) { toast.error(lang === 'ru' ? 'Нужен .zip файл' : 'Select a .zip file'); return; }
+    setBackupLoading(true);
+    try {
+      const result = await importBackup(file);
+      const s = result.imported;
+      toast.success(lang === 'ru'
+        ? `Импортировано: ${s.entities} сущ., ${s.relationships} связей (пропущено: ${s.skipped})`
+        : `Imported: ${s.entities} entities, ${s.relationships} rels (skipped: ${s.skipped})`);
+    } catch { toast.error(lang === 'ru' ? 'Ошибка импорта' : 'Import failed'); }
+    finally { setBackupLoading(false); }
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-2xl mx-auto">
@@ -206,75 +283,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section icon={Cloud} title={lang === 'ru' ? 'Синхронизация WebDAV' : 'WebDAV Sync'}>
-          <p className="text-xs font-mono text-[var(--text-muted)] mb-4">
-            {lang === 'ru'
-              ? 'Двусторонняя синхронизация с Nextcloud, ownCloud или любым WebDAV-сервером.'
-              : 'Bidirectional sync with Nextcloud, ownCloud or any WebDAV server.'}
-          </p>
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">URL</label>
-              <input value={wdUrl} onChange={e => setWdUrl(e.target.value)}
-                placeholder="https://cloud.example.com/remote.php/dav/files/user/osint/"
-                className={inputCls} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
-                  {lang === 'ru' ? 'Логин' : 'Username'}
-                </label>
-                <input value={wdUser} onChange={e => setWdUser(e.target.value)} placeholder="username" className={inputCls} />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
-                  {lang === 'ru' ? 'Пароль' : 'Password'}
-                </label>
-                <div className="relative">
-                  <input value={wdPass} onChange={e => setWdPass(e.target.value)} type={showPass ? 'text' : 'password'}
-                    placeholder="••••••••" className={inputCls + ' pr-8'} />
-                  <button onClick={() => setShowPass(v => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-                    {showPass ? <EyeOff size={12} /> : <Eye size={12} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest block mb-1">
-                {lang === 'ru' ? 'Имя файла' : 'Filename'}
-              </label>
-              <input value={wdFile} onChange={e => setWdFile(e.target.value)} placeholder="osint_backup.zip" className={inputCls} />
-            </div>
-          </div>
-
-          {wdConnected !== null && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 text-xs font-mono border ${wdConnected ? 'bg-[#00ff8810] border-[#00ff8840] text-[#00ff88]' : 'bg-[#ff444410] border-[#ff444440] text-[#ff6666]'}`}>
-              {wdConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
-              {wdConnected ? (lang === 'ru' ? 'Подключение работает' : 'Connection OK') : (lang === 'ru' ? 'Не удалось подключиться' : 'Connection failed')}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {([
-              { op: 'test', icon: TestTube,     label: lang === 'ru' ? 'Тест'           : 'Test',  fn: handleWdTest },
-              { op: 'push', icon: UploadCloud,  label: lang === 'ru' ? 'Отправить'      : 'Push',  fn: handleWdPush },
-              { op: 'pull', icon: DownloadCloud,label: lang === 'ru' ? 'Получить'       : 'Pull',  fn: handleWdPull },
-              { op: 'sync', icon: RefreshCw,    label: lang === 'ru' ? 'Синхронизировать':'Sync',  fn: handleWdSync },
-            ] as {op:string; icon:any; label:string; fn:()=>void}[]).map(({ op, icon: Icon, label, fn }) => (
-              <button key={op} onClick={fn} disabled={wdDisabled}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border font-mono text-xs transition-all border-[var(--border-light)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed">
-                <Icon size={13} className={wdLoading === op ? 'animate-spin' : ''} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-3 flex items-start gap-2 text-[11px] font-mono text-[var(--text-muted)]">
-            <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-            {lang === 'ru' ? 'Пароль не сохраняется между сессиями.' : 'Password is never persisted — re-enter each session.'}
-          </div>
-        </Section>
+        <WebDAVSection lang={lang} toast={toast} />
       </div>
     </div>
   );

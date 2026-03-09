@@ -8,7 +8,7 @@ import type { FieldDefinition, EntityTypeSchemaCreate, EntityTypeSchemaUpdate, E
 import { Plus, X, Trash2, Check, Edit2, Shapes } from 'lucide-react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
-const FIELD_TYPES = ['text', 'date', 'url', 'number'] as const;
+const FIELD_TYPES = ['text', 'date', 'url', 'number', 'entity', 'entities'] as const;
 const PALETTE = [
   '#f43f5e','#ec4899','#a855f7','#6366f1','#3b82f6',
   '#06b6d4','#10b981','#84cc16','#eab308','#f97316',
@@ -17,7 +17,7 @@ const PALETTE = [
 
 interface FieldRow {
   name: string; label_en: string; label_ru: string;
-  field_type: 'text' | 'date' | 'url' | 'number'; required: boolean;
+  field_type: 'text' | 'date' | 'url' | 'number' | 'entity'; required: boolean;
 }
 function emptyField(): FieldRow {
   return { name: '', label_en: '', label_ru: '', field_type: 'text', required: false };
@@ -78,11 +78,23 @@ export default function EntityTypesPage() {
     setIconImage((schema as any).icon_image || null);
     setColor(schema.color || PALETTE[4]);
     setShowForm(true);
-    setFields((schema.fields || []).map(f => ({
-      name: f.name, label_en: f.label_en, label_ru: f.label_ru || '',
-      field_type: f.field_type as any, required: f.required,
-    })));
-    setShowForm(true);
+
+    // If schema has saved fields, use those; if it's a builtin with no saved fields yet,
+    // pre-populate from BUILTIN_FIELD_PRESETS so the user can edit/remove them
+    if (schema.fields && schema.fields.length > 0) {
+      setFields(schema.fields.map(f => ({
+        name: f.name, label_en: f.label_en, label_ru: f.label_ru || '',
+        field_type: f.field_type as any, required: f.required,
+      })));
+    } else if (schema.is_builtin && BUILTIN_FIELD_PRESETS[schema.name]) {
+      const preset = BUILTIN_FIELD_PRESETS[schema.name];
+      setFields(preset.map(p => ({
+        name: p.key, label_en: p.label_en, label_ru: p.label_ru,
+        field_type: p.type, required: false,
+      })));
+    } else {
+      setFields([]);
+    }
     setErrors({});
   };
 

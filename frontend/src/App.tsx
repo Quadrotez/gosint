@@ -14,6 +14,7 @@ import GraphExplorer from './pages/GraphExplorer';
 import CreateEntity from './pages/CreateEntity';
 import ImportPage from './pages/ImportPage';
 import EntityTypesPage from './pages/EntityTypesPage';
+import RelationshipTypesPage from './pages/RelationshipTypesPage';
 import SettingsPage from './pages/SettingsPage';
 import EntityBoardPage from './pages/EntityBoardPage';
 import LoginPage from './pages/LoginPage';
@@ -64,6 +65,7 @@ function AppInner() {
                       <Route path="/create" element={<CreateEntity />} />
                       <Route path="/import" element={<ImportPage />} />
                       <Route path="/entity-types" element={<EntityTypesPage />} />
+                      <Route path="/relationship-types" element={<RelationshipTypesPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
                       <Route path="/admin" element={

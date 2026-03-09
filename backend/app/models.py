@@ -27,6 +27,7 @@ class User(Base):
     relationships = relationship("Relationship", back_populates="owner", cascade="all, delete-orphan")
     entity_schemas = relationship("EntityTypeSchema", back_populates="owner", cascade="all, delete-orphan")
     attachments = relationship("EntityAttachment", back_populates="owner", cascade="all, delete-orphan")
+    relationship_type_schemas = relationship("RelationshipTypeSchema", back_populates="owner", cascade="all, delete-orphan")
 
 
 class SiteSettings(Base):
@@ -105,7 +106,24 @@ class EntityAttachment(Base):
     filename = Column(String(255), nullable=False)
     mimetype = Column(String(128), nullable=False, default="application/octet-stream")
     size_bytes = Column(Integer, nullable=False, default=0)
-    data_b64 = Column(Text, nullable=False)   # full base64 (no prefix)
+    data_b64 = Column(Text, nullable=False)   # AES-256-GCM encrypted base64 blob
     created_at = Column(DateTime, default=datetime.utcnow)
     entity = relationship("Entity", back_populates="attachments")
     owner = relationship("User", back_populates="attachments")
+
+
+class RelationshipTypeSchema(Base):
+    """User-defined (and built-in) relationship type definitions."""
+    __tablename__ = "relationship_type_schemas"
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    label_en = Column(String, nullable=False)
+    label_ru = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    emoji = Column(String(8), nullable=True, default="🔗")
+    color = Column(String(16), nullable=True)
+    fields = Column(Text, nullable=True)       # JSON array of FieldDefinition
+    is_builtin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    owner = relationship("User", back_populates="relationship_type_schemas")

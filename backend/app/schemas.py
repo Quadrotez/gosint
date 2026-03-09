@@ -266,6 +266,43 @@ class AttachmentCreate(BaseModel):
     data_b64: str   # pure base64, no data URI prefix
 
 
+# ── Relationship Type Schemas ──────────────────────────────────────────────────
+
+class RelationshipTypeSchemaCreate(BaseModel):
+    name: str
+    label_en: str
+    label_ru: Optional[str] = None
+    description: Optional[str] = None
+    emoji: Optional[str] = "🔗"
+    color: Optional[str] = None
+    fields: Optional[List[FieldDefinition]] = None
+
+
+class RelationshipTypeSchemaUpdate(BaseModel):
+    label_en: Optional[str] = None
+    label_ru: Optional[str] = None
+    description: Optional[str] = None
+    emoji: Optional[str] = None
+    color: Optional[str] = None
+    fields: Optional[List[FieldDefinition]] = None
+
+
+class RelationshipTypeSchemaOut(BaseModel):
+    id: str
+    name: str
+    label_en: str
+    label_ru: Optional[str] = None
+    description: Optional[str] = None
+    emoji: Optional[str] = None
+    color: Optional[str] = None
+    fields: Optional[List[FieldDefinition]] = None
+    is_builtin: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ── DB Config ─────────────────────────────────────────────────────────────────
 
 class DbConfigOut(BaseModel):

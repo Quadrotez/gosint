@@ -7,10 +7,26 @@ from datetime import datetime
 from ..database import get_db
 from .. import models, schemas
 from ..deps import get_current_user
+from ..crud import _get_enc_key
+from ..encryption import encrypt_field, decrypt_field
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
 MAX_SIZE = 20 * 1024 * 1024  # 20 MB per file
+
+
+def _encrypt_attachment(key, data_b64: str) -> str:
+    """Encrypt raw base64 attachment data using AES-256-GCM."""
+    if key is None:
+        return data_b64
+    return encrypt_field(key, data_b64)
+
+
+def _decrypt_attachment(key, data_b64: str) -> str:
+    """Decrypt attachment data; pass-through if no key or not encrypted."""
+    if key is None:
+        return data_b64
+    return decrypt_field(key, data_b64)
 
 
 @router.get("/entity/{entity_id}", response_model=List[schemas.AttachmentOut])
@@ -19,10 +35,24 @@ def list_attachments(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    return db.query(models.EntityAttachment).filter(
+    key = _get_enc_key(user)
+    rows = db.query(models.EntityAttachment).filter(
         models.EntityAttachment.entity_id == entity_id,
         models.EntityAttachment.user_id == user.id,
     ).all()
+    result = []
+    for att in rows:
+        decrypted = _decrypt_attachment(key, att.data_b64)
+        result.append(schemas.AttachmentOut(
+            id=att.id,
+            entity_id=att.entity_id,
+            filename=att.filename,
+            mimetype=att.mimetype,
+            size_bytes=att.size_bytes,
+            data_b64=decrypted,
+            created_at=att.created_at,
+        ))
+    return result
 
 
 @router.post("/entity/{entity_id}", response_model=schemas.AttachmentOut, status_code=201)
@@ -41,6 +71,9 @@ def upload_attachment(
     if body.size_bytes > MAX_SIZE:
         raise HTTPException(413, "File too large (max 20 MB)")
 
+    key = _get_enc_key(user)
+    encrypted_data = _encrypt_attachment(key, body.data_b64)
+
     att = models.EntityAttachment(
         id=str(uuid.uuid4()),
         entity_id=entity_id,
@@ -48,11 +81,20 @@ def upload_attachment(
         filename=body.filename,
         mimetype=body.mimetype,
         size_bytes=body.size_bytes,
-        data_b64=body.data_b64,
+        data_b64=encrypted_data,
         created_at=datetime.utcnow(),
     )
     db.add(att); db.commit(); db.refresh(att)
-    return att
+
+    return schemas.AttachmentOut(
+        id=att.id,
+        entity_id=att.entity_id,
+        filename=att.filename,
+        mimetype=att.mimetype,
+        size_bytes=att.size_bytes,
+        data_b64=body.data_b64,  # return original (unencrypted) to client
+        created_at=att.created_at,
+    )
 
 
 @router.get("/{att_id}/download")
@@ -67,7 +109,11 @@ def download_attachment(
     ).first()
     if not att:
         raise HTTPException(404, "Attachment not found")
-    data = base64.b64decode(att.data_b64)
+
+    key = _get_enc_key(user)
+    decrypted_b64 = _decrypt_attachment(key, att.data_b64)
+    data = base64.b64decode(decrypted_b64)
+
     return Response(
         content=data,
         media_type=att.mimetype,

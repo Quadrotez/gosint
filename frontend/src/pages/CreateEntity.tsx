@@ -1,15 +1,17 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createEntity } from '../api';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { createEntity, getEntities } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
 import { useSettings } from '../context/SettingsContext';
 import { BUILTIN_ENTITY_TYPES, BUILTIN_FIELD_PRESETS } from '../utils';
-import type { FieldDefinition } from '../types';
-import { ArrowLeft, Plus, X, Camera, User } from 'lucide-react';
+import type { FieldDefinition, Entity } from '../types';
+import { ArrowLeft, Plus, X, Camera, User, Search } from 'lucide-react';
+import DatePicker from '../components/ui/DatePicker';
 
 interface KVField { key: string; value: string; }
+
 
 export default function CreateEntity() {
   const navigate = useNavigate();
@@ -48,6 +50,12 @@ export default function CreateEntity() {
   const isPerson = type === 'person';
   const customSchema = schemas.find(s => s.name === type);
   const isBuiltin = BUILTIN_ENTITY_TYPES.includes(type);
+  // Use schema.fields if available (for both custom and edited builtin types);
+  // for unedited builtins fall back to BUILTIN_FIELD_PRESETS
+  const schemaFields = customSchema?.fields && customSchema.fields.length > 0
+    ? customSchema.fields
+    : null;
+  const presetFields = !schemaFields ? BUILTIN_FIELD_PRESETS[type] : null;
 
   const fullName = isPerson
     ? [lastName, firstName, middleName].filter(Boolean).join(' ')
@@ -87,20 +95,29 @@ export default function CreateEntity() {
       if (middleName) m.middle_name = middleName;
       if (dob) m.dob = dob;
       if (photo) m.photo = photo;
-      personExtra.forEach(({ key, value: v }) => { if (key.trim()) m[key.trim()] = v; });
-      metadata = Object.keys(m).length > 0 ? m : null;
-    } else {
-      const preset = BUILTIN_FIELD_PRESETS[type];
-      const m: Record<string, unknown> = {};
-      if (customSchema?.fields) {
-        customSchema.fields.forEach(f => {
+      // Save any extra schema fields defined for person type
+      if (schemaFields) {
+        schemaFields.filter(f => !['last_name','first_name','middle_name','dob','photo'].includes(f.name)).forEach(f => {
           const v = schemaValues[f.name];
           if (v) m[f.name] = v;
         });
       }
-      // Add builtin preset field values
-      if (preset) {
-        preset.forEach(f => {
+      personExtra.forEach(({ key, value: v }) => { if (key.trim()) m[key.trim()] = v; });
+      metadata = Object.keys(m).length > 0 ? m : null;
+    } else {
+      const m: Record<string, unknown> = {};
+      if (schemaFields) {
+        schemaFields.forEach(f => {
+          if (f.field_type === 'entity') {
+            const v = schemaValues[f.name];
+            if (v) m[f.name] = v;
+          } else {
+            const v = schemaValues[f.name];
+            if (v) m[f.name] = v;
+          }
+        });
+      } else if (presetFields) {
+        presetFields.forEach(f => {
           const v = schemaValues[f.key];
           if (v) m[f.key] = v;
         });
@@ -120,9 +137,10 @@ export default function CreateEntity() {
     mutation.mutate({ type, value: entityValue, metadata });
   };
 
-  const preset = BUILTIN_FIELD_PRESETS[type];
-  const hasPresetValues = preset ? preset.some(f => schemaValues[f.key]?.trim()) : false;
-  const canSubmit = isPerson ? true : value.trim().length > 0 || hasPresetValues;
+  const hasSchemaValues = schemaFields
+    ? schemaFields.some(f => schemaValues[f.name]?.trim())
+    : (presetFields ? presetFields.some(f => schemaValues[f.key]?.trim()) : false);
+  const canSubmit = isPerson ? true : value.trim().length > 0 || hasSchemaValues;
   const color = getColor(type);
   const customTypes = schemas.filter(s => !s.is_builtin);
 
@@ -257,17 +275,61 @@ export default function CreateEntity() {
               ))}
             </div>
 
-            {/* DOB */}
-            <div className="w-48">
+            {/* DOB — custom locale-aware 3-part date input */}
+            <div className="w-full max-w-xs">
               <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">{t.ce_person_dob}</label>
-              <input
-                type="date"
-                value={dob}
-                onChange={e => setDob(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] outline-none focus:border-[#3a4460]"
-                style={{ colorScheme: 'dark' }}
-              />
+              <DatePicker value={dob} onChange={setDob} dateLocale={dateLocale} />
             </div>
+
+            {/* Schema-defined extra fields for person (custom fields added in EntityTypesPage) */}
+            {schemaFields && schemaFields.filter(f => !['last_name','first_name','middle_name','dob','photo'].includes(f.name)).length > 0 && (
+              <div className="space-y-3">
+                <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest block">
+                  {lang === 'ru' ? 'Дополнительные поля' : 'Extra Fields'}
+                </label>
+                {schemaFields.filter(f => !['last_name','first_name','middle_name','dob','photo'].includes(f.name)).map((f: FieldDefinition) => {
+                  const label = (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en;
+                  if (f.field_type === 'entity') {
+                    return (
+                      <EntityFieldPicker
+                        key={f.name} label={label} required={f.required}
+                        value={schemaValues[f.name] || ''}
+                        onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                        lang={lang}
+                      />
+                    );
+                  }
+                  if (f.field_type === 'entities') {
+                    return (
+                      <EntitiesFieldPicker
+                        key={f.name} label={label} required={f.required}
+                        value={schemaValues[f.name] || ''}
+                        onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                        lang={lang}
+                      />
+                    );
+                  }
+                  return (
+                    <div key={f.name}>
+                      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+                        {label}{f.required && <span className="text-[#ff4444] ml-1">*</span>}
+                      </label>
+                      {f.field_type === 'date' ? (
+                        <DatePicker value={schemaValues[f.name] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))} dateLocale={dateLocale} />
+                      ) : (
+                        <input
+                          type={f.field_type === 'number' ? 'number' : 'text'}
+                          value={schemaValues[f.name] || ''}
+                          onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
+                          placeholder={f.name}
+                          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Extra fields */}
             <div>
@@ -315,8 +377,8 @@ export default function CreateEntity() {
           </div>
         )}
 
-        {/* ── CUSTOM TYPE WITH SCHEMA FIELDS ── */}
-        {!isPerson && customSchema && customSchema.fields && customSchema.fields.length > 0 && (
+        {/* ── NON-PERSON FORM (unified for builtin + custom, with schema or preset fields) ── */}
+        {!isPerson && (
           <div className="space-y-4">
             <div>
               <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-2 block">
@@ -332,83 +394,85 @@ export default function CreateEntity() {
               />
             </div>
 
-            <div>
-              <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">
-                {lang === 'ru' ? 'Поля' : 'Fields'}
-              </label>
-              <div className="space-y-3">
-                {customSchema.fields.map((f: FieldDefinition) => {
-                  const label = (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en;
-                  return (
-                    <div key={f.name}>
-                      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
-                        {label}
-                        {f.required && <span className="text-[#ff4444] ml-1">*</span>}
-                      </label>
-                      <input
-                        type={f.field_type === 'date' ? 'date' : f.field_type === 'number' ? 'number' : 'text'}
-                        value={schemaValues[f.name] || ''}
-                        onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
-                        placeholder={f.name}
-                        className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
-                        style={{ colorScheme: 'dark' }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <MetaFieldsEditor fields={metaFields} onChange={setMetaFields} lang={lang} />
-
-            {value && (
-              <div className="rounded-lg p-3 font-mono text-xs border" style={{ borderColor: `${color}30`, backgroundColor: `${color}08` }}>
-                <span className="text-[#4a5568]">{t.ce_preview} </span>
-                <span style={{ color }}>{getLabel(type)}</span>
-                <span className="text-[#e8edf5] ml-2">{value}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── DEFAULT FORM (builtin non-person + custom without fields) ── */}
-        {!isPerson && !(customSchema?.fields && customSchema.fields.length > 0) && (() => {
-          const preset = BUILTIN_FIELD_PRESETS[type];
-          return (
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-2 block">
-                {t.ce_value_label} <span className="text-[#ff4444]">*</span>
-              </label>
-              <input
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder={`Enter ${getLabel(type)}...`}
-                className="w-full px-4 py-3 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
-                style={{ borderColor: value ? `${color}60` : '' }}
-              />
-            </div>
-
-            {preset && preset.length > 0 && (
+            {/* Schema-defined fields (includes edited builtins) */}
+            {schemaFields && schemaFields.length > 0 && (
               <div>
                 <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">
                   {lang === 'ru' ? 'Поля' : 'Fields'}
                 </label>
                 <div className="space-y-3">
-                  {preset.map(f => {
-                    const label = (lang === 'ru') ? f.label_ru : f.label_en;
+                  {schemaFields.map((f: FieldDefinition) => {
+                    const label = (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en;
+                    if (f.field_type === 'entity') {
+                      return (
+                        <EntityFieldPicker
+                          key={f.name}
+                          label={label}
+                          required={f.required}
+                          value={schemaValues[f.name] || ''}
+                          onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                          lang={lang}
+                        />
+                      );
+                    }
+                    if (f.field_type === 'entities') {
+                      return (
+                        <EntitiesFieldPicker
+                          key={f.name}
+                          label={label}
+                          required={f.required}
+                          value={schemaValues[f.name] || ''}
+                          onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                          lang={lang}
+                        />
+                      );
+                    }
+                    return (
+                      <div key={f.name}>
+                        <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+                          {label}{f.required && <span className="text-[#ff4444] ml-1">*</span>}
+                        </label>
+                        {f.field_type === 'date' ? (
+                          <DatePicker value={schemaValues[f.name] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))} dateLocale={dateLocale} />
+                        ) : (
+                          <input
+                            type={f.field_type === 'number' ? 'number' : 'text'}
+                            value={schemaValues[f.name] || ''}
+                            onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
+                            placeholder={f.name}
+                            className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Preset fields (unedited builtins) */}
+            {presetFields && presetFields.length > 0 && (
+              <div>
+                <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">
+                  {lang === 'ru' ? 'Поля' : 'Fields'}
+                </label>
+                <div className="space-y-3">
+                  {presetFields.map(f => {
+                    const label = lang === 'ru' ? f.label_ru : f.label_en;
                     return (
                       <div key={f.key}>
                         <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">{label}</label>
-                        <input
-                          type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
-                          value={schemaValues[f.key] || ''}
-                          onChange={e => setSchemaValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                          placeholder={label}
-                          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
-                          style={{ colorScheme: 'dark' }}
-                        />
+                        {f.type === 'date' ? (
+                          <DatePicker value={schemaValues[f.key] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.key]: v }))} dateLocale={dateLocale} />
+                        ) : (
+                          <input
+                            type={f.type === 'number' ? 'number' : 'text'}
+                            value={schemaValues[f.key] || ''}
+                            onChange={e => setSchemaValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                            placeholder={label}
+                            className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -426,8 +490,7 @@ export default function CreateEntity() {
               </div>
             )}
           </div>
-          );
-        })()}
+        )}
 
         <button
           onClick={handleSubmit}
@@ -487,6 +550,228 @@ function MetaFieldsEditor({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── EntityFieldPicker: searchable entity selector for 'entity' field type ────
+
+function EntityFieldPicker({
+  label, required, value, onChange, lang,
+}: {
+  label: string; required: boolean; value: string;
+  onChange: (entityId: string) => void; lang: string;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const { data: entities = [] } = useQuery<Entity[]>({
+    queryKey: ['entities'],
+    queryFn: () => getEntities({ limit: 1000 }),
+  });
+
+  const { schemas } = useEntitySchemas();
+
+  const filtered = entities.filter(e => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    const meta = (e.metadata || {}) as Record<string, string>;
+    const name = e.type === 'person'
+      ? [meta.last_name, meta.first_name, meta.middle_name].filter(Boolean).join(' ')
+      : e.value;
+    return name.toLowerCase().includes(q) || e.type.toLowerCase().includes(q);
+  }).slice(0, 20);
+
+  const selectedEntity = value ? entities.find(e => e.id === value) : null;
+
+  const getEntityLabel = (e: Entity) => {
+    const meta = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person'
+      ? [meta.last_name, meta.first_name].filter(Boolean).join(' ') || e.value
+      : e.value;
+  };
+
+  const getTypeLabel = (type: string) => {
+    const schema = schemas.find(s => s.name === type);
+    if (schema) return lang === 'ru' && schema.label_ru ? schema.label_ru : schema.label_en;
+    return type;
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+        {label}{required && <span className="text-[#ff4444] ml-1">*</span>}
+        <span className="ml-1 text-[#3a4460]">· entity</span>
+      </label>
+      <div className="relative">
+        <div
+          onClick={() => setOpen(v => !v)}
+          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] cursor-pointer flex items-center justify-between hover:border-[#3a4460]"
+        >
+          {selectedEntity ? (
+            <span className="flex items-center gap-2">
+              <span className="text-[#4a5568] text-xs">[{getTypeLabel(selectedEntity.type)}]</span>
+              {getEntityLabel(selectedEntity)}
+            </span>
+          ) : (
+            <span className="text-[#4a5568]">{lang === 'ru' ? 'Выбрать сущность...' : 'Select entity...'}</span>
+          )}
+          <Search size={12} className="text-[#4a5568]" />
+        </div>
+        {open && (
+          <div className="absolute z-30 mt-1 w-full bg-[#181c24] border border-[#262d3d] rounded-lg shadow-xl overflow-hidden">
+            <div className="p-2 border-b border-[#262d3d]">
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+                className="w-full px-2 py-1.5 bg-[#0d1017] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] outline-none"
+              />
+            </div>
+            <div className="max-h-52 overflow-y-auto">
+              {value && (
+                <button onClick={() => { onChange(''); setOpen(false); }}
+                  className="w-full px-3 py-2 text-left font-mono text-xs text-[#ff4444] hover:bg-[#ff444410]">
+                  ✕ {lang === 'ru' ? 'Сбросить' : 'Clear'}
+                </button>
+              )}
+              {filtered.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => { onChange(e.id); setOpen(false); setSearch(''); }}
+                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[#1e2330] flex items-center gap-2"
+                  style={{ color: e.id === value ? 'var(--accent)' : '#e8edf5' }}
+                >
+                  <span className="text-[#4a5568] text-[10px]">[{getTypeLabel(e.type)}]</span>
+                  {getEntityLabel(e)}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="px-3 py-2 font-mono text-xs text-[#4a5568]">
+                  {lang === 'ru' ? 'Не найдено' : 'No results'}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── EntitiesFieldPicker: multi-entity selector for 'entities' field type ─────
+
+function EntitiesFieldPicker({
+  label, required, value, onChange, lang,
+}: {
+  label: string; required: boolean; value: string;
+  onChange: (v: string) => void; lang: string;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const { data: entities = [] } = useQuery<Entity[]>({
+    queryKey: ['entities'],
+    queryFn: () => getEntities({ limit: 1000 }),
+  });
+  const { schemas } = useEntitySchemas();
+
+  // value stored as comma-separated IDs
+  const selectedIds: string[] = value ? value.split(',').filter(Boolean) : [];
+
+  const toggle = (id: string) => {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter(x => x !== id)
+      : [...selectedIds, id];
+    onChange(next.join(','));
+  };
+
+  const getEntityLabel = (e: Entity) => {
+    const meta = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person'
+      ? [meta.last_name, meta.first_name].filter(Boolean).join(' ') || e.value
+      : e.value;
+  };
+
+  const getTypeLabel = (type: string) => {
+    const schema = schemas.find(s => s.name === type);
+    if (schema) return lang === 'ru' && schema.label_ru ? schema.label_ru : schema.label_en;
+    return type;
+  };
+
+  const filtered = entities.filter(e => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return getEntityLabel(e).toLowerCase().includes(q) || e.type.toLowerCase().includes(q);
+  }).slice(0, 30);
+
+  return (
+    <div>
+      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+        {label}{required && <span className="text-[#ff4444] ml-1">*</span>}
+        <span className="ml-1 text-[#3a4460]">· entities</span>
+      </label>
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {selectedIds.map(id => {
+            const e = entities.find(x => x.id === id);
+            if (!e) return null;
+            return (
+              <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-[#1e2330] rounded font-mono text-xs text-[#e8edf5]">
+                {getEntityLabel(e)}
+                <button onClick={() => toggle(id)} className="text-[#4a5568] hover:text-[#ff4444] ml-1">×</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <div className="relative">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-left flex items-center justify-between hover:border-[#3a4460]"
+        >
+          <span className="text-[#4a5568]">{lang === 'ru' ? '+ Добавить сущности...' : '+ Add entities...'}</span>
+          <Search size={12} className="text-[#4a5568]" />
+        </button>
+        {open && (
+          <div className="absolute z-30 mt-1 w-full bg-[#181c24] border border-[#262d3d] rounded-lg shadow-xl overflow-hidden">
+            <div className="p-2 border-b border-[#262d3d]">
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+                className="w-full px-2 py-1.5 bg-[#0d1017] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] outline-none"
+              />
+            </div>
+            <div className="max-h-52 overflow-y-auto">
+              {filtered.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => { toggle(e.id); setSearch(''); }}
+                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[#1e2330] flex items-center gap-2"
+                  style={{ color: selectedIds.includes(e.id) ? '#00d4ff' : '#e8edf5' }}
+                >
+                  {selectedIds.includes(e.id) && <span className="text-[#00d4ff]">✓</span>}
+                  <span className="text-[#4a5568] text-[10px]">[{getTypeLabel(e.type)}]</span>
+                  {getEntityLabel(e)}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="px-3 py-2 font-mono text-xs text-[#4a5568]">
+                  {lang === 'ru' ? 'Не найдено' : 'No results'}
+                </p>
+              )}
+            </div>
+            <div className="p-2 border-t border-[#262d3d]">
+              <button onClick={() => setOpen(false)} className="w-full text-xs font-mono text-[#4a5568] hover:text-[#e8edf5]">
+                {lang === 'ru' ? 'Закрыть' : 'Close'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

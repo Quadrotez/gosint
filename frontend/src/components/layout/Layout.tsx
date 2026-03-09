@@ -18,6 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: '/entities', icon: Network, label: t.nav_entities },
     { path: '/graph', icon: GitBranch, label: t.nav_graph },
     { path: '/entity-types', icon: Shapes, label: lang === 'ru' ? 'Типы сущностей' : 'Entity Types' },
+    { path: '/relationship-types', icon: Cpu, label: lang === 'ru' ? 'Типы связей' : 'Rel. Types' },
     { path: '/import', icon: Upload, label: t.nav_import },
     { path: '/create', icon: Plus, label: t.nav_new },
     { path: '/settings', icon: Settings, label: t.settings_title },
