@@ -54,7 +54,7 @@ export default function Entities() {
           <h1 className="text-2xl font-mono font-semibold text-[var(--text-primary)]">{t.ent_title}</h1>
           <p className="text-sm text-[var(--text-muted)] font-mono mt-1">{t.ent_subtitle_count(entities.length)}</p>
         </div>
-        <Link to="/create" className="px-4 py-2 bg-[#00d4ff] text-[#0a0c0f] font-mono text-sm font-semibold rounded-lg hover:bg-[#00b8e0] transition-colors">
+        <Link to="/create" className="px-4 py-2 bg-[var(--accent)] text-white font-mono text-sm font-semibold rounded-lg hover:opacity-90 transition-colors">
           {t.ent_new}
         </Link>
       </div>
@@ -135,12 +135,12 @@ export default function Entities() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Link to={`/entities/${entity.id}`} className="p-1.5 rounded hover:bg-[#262d3d] text-[var(--text-muted)] hover:text-[#00d4ff] transition-colors">
+                      <Link to={`/entities/${entity.id}`} className="p-1.5 rounded hover:bg-[var(--border-light)] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
                         <ExternalLink size={13} />
                       </Link>
                       <button
                         onClick={() => setConfirmId(entity.id)}
-                        className="p-1.5 rounded hover:bg-[#262d3d] text-[var(--text-muted)] hover:text-[#ff4444] transition-colors"
+                        className="p-1.5 rounded hover:bg-[var(--border-light)] text-[var(--text-muted)] hover:text-[#ff4444] transition-colors"
                       >
                         <Trash2 size={13} />
                       </button>

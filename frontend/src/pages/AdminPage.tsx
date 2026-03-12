@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminGetUsers, adminUpdateUser, adminDeleteUser, adminGetSettings, adminUpdateSettings, getDbConfig, updateDbConfig, type DbConfigOut } from '../api';
 import { useToast } from '../context/ToastContext';
@@ -139,8 +139,8 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {users.map((u: AdminUser) => (
-                  <>
-                    <tr key={u.id} style={{ borderBottom: '1px solid var(--border)', background: editingUser === u.id ? 'var(--bg-secondary)' : undefined }}>
+                  <Fragment key={u.id}>
+                    <tr style={{ borderBottom: '1px solid var(--border)', background: editingUser === u.id ? 'var(--bg-secondary)' : undefined }}>
                       <td className="px-4 py-3" style={{ color: 'var(--text-primary)' }}>
                         {u.username}
                         {u.id === user.id && (
@@ -225,7 +225,7 @@ export default function AdminPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -410,11 +410,11 @@ export default function AdminPage() {
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
-                  onClick={() => updateSettingsMut.mutate({ open_search_enabled: !(settings as any).open_search_enabled })}
+                  onClick={() => updateSettingsMut.mutate({ open_search_enabled: !settings.open_search_enabled })}
                   className="w-10 h-5 rounded-full relative transition-colors cursor-pointer"
-                  style={{ background: (settings as any).open_search_enabled !== false ? 'var(--accent)' : 'var(--bg-secondary)' }}>
+                  style={{ background: settings.open_search_enabled ? 'var(--accent)' : 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                   <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
-                    style={{ left: (settings as any).open_search_enabled !== false ? '1.25rem' : '0.125rem' }} />
+                    style={{ left: settings.open_search_enabled ? '1.25rem' : '0.125rem' }} />
                 </div>
                 <span className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {lang === 'ru' ? 'Открытый поиск' : 'Open Search'}

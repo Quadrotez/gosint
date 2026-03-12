@@ -146,7 +146,7 @@ export default function RelationshipTypesPage() {
         {!showForm && (
           <button onClick={() => setShowForm(true)}
             className="flex items-center gap-2 px-4 py-2 font-mono text-sm font-semibold rounded-lg transition-colors"
-            style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+            style={{ background: 'var(--accent)', color: '#fff' }}>
             <Plus size={14} /> {lang === 'ru' ? 'Создать тип' : 'Create type'}
           </button>
         )}
@@ -308,7 +308,7 @@ export default function RelationshipTypesPage() {
           <div className="flex gap-3">
             <button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}
               className="flex items-center gap-2 px-5 py-2.5 font-mono text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
-              style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+              style={{ background: 'var(--accent)', color: '#fff' }}>
               <Check size={13} /> {editingSchema ? (lang === 'ru' ? 'Обновить' : 'Update') : (lang === 'ru' ? 'Создать' : 'Create')}
             </button>
             <button onClick={resetForm} className="px-5 py-2.5 font-mono text-sm rounded-lg transition-colors"

@@ -196,7 +196,7 @@ export default function EntityPage() {
                   {meta.photo && (
                     <button
                       onClick={removePhoto}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[#0a0c0f] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[var(--bg-card)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <X size={10} className="text-white" />
                     </button>
@@ -282,7 +282,7 @@ export default function EntityPage() {
                     onClick={savePersonEdits}
                     disabled={updateMutation.isPending}
                     className="mt-4 flex items-center gap-2 px-4 py-2 font-mono text-xs font-semibold rounded-lg disabled:opacity-50 transition-colors"
-                    style={{ background: 'var(--accent)', color: '#0a0c0f' }}
+                    style={{ background: 'var(--accent)', color: '#fff' }}
                   >
                     <Check size={12} /> {t.ep_meta_save}
                   </button>
@@ -324,7 +324,7 @@ export default function EntityPage() {
                         </button>
                       ) : (
                         <div className="flex gap-2">
-                          <button onClick={saveExtras} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+                          <button onClick={saveExtras} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
                             <Check size={10} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
                           </button>
                           <button onClick={() => setEditingExtras(false)} className="px-2.5 py-1 font-mono text-xs rounded border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
@@ -415,7 +415,7 @@ export default function EntityPage() {
                       {meta.photo && (
                         <button
                           onClick={e => { e.stopPropagation(); removePhoto(); }}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[#0a0c0f] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[var(--bg-card)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={10} className="text-white" />
                         </button>
@@ -496,7 +496,7 @@ export default function EntityPage() {
                           </button>
                         ) : (
                           <div className="flex gap-2">
-                            <button onClick={saveStructEdit} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+                            <button onClick={saveStructEdit} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
                               <Check size={10} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
                             </button>
                             <button onClick={() => setEditingExtras(false)} className="px-2.5 py-1 font-mono text-xs rounded border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
@@ -592,7 +592,7 @@ export default function EntityPage() {
                         onClick={() => setNotesTab(tab)}
                         className="px-2.5 py-1 text-[10px] font-mono transition-colors"
                         style={notesTab === tab
-                          ? { background: 'var(--accent)', color: '#0a0c0f' }
+                          ? { background: 'var(--accent)', color: '#fff' }
                           : { color: 'var(--text-muted)' }}
                       >
                         {tab === 'write' ? t.notes_write : t.notes_preview}
@@ -603,7 +603,7 @@ export default function EntityPage() {
                     onClick={saveNotes}
                     disabled={updateMutation.isPending}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-mono text-xs font-semibold transition-colors disabled:opacity-50"
-                    style={{ background: 'var(--accent)', color: '#0a0c0f' }}
+                    style={{ background: 'var(--accent)', color: '#fff' }}
                   >
                     <Check size={11} /> {t.notes_save}
                   </button>
@@ -964,7 +964,7 @@ function AddRelModal({ entityId, entityType, entities, onSubmit, onClose, t, lan
             onClick={handleSubmit}
             disabled={!targetId || !type}
             className="w-full py-2.5 font-mono text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            style={{ background: 'var(--accent)', color: '#0a0c0f' }}
+            style={{ background: 'var(--accent)', color: '#fff' }}
           >
             {t.rel_submit}
           </button>

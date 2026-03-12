@@ -154,7 +154,7 @@ export default function EntityTypesPage() {
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 px-4 py-2 font-mono text-sm font-semibold rounded-lg transition-colors"
-            style={{ background: 'var(--accent)', color: '#0a0c0f' }}
+            style={{ background: 'var(--accent)', color: '#fff' }}
           >
             <Plus size={14} /> {t.etm_create}
           </button>
@@ -325,7 +325,7 @@ export default function EntityTypesPage() {
           <div className="flex gap-3">
             <button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}
               className="flex items-center gap-2 px-5 py-2.5 font-mono text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
-              style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+              style={{ background: 'var(--accent)', color: '#fff' }}>
               <Check size={13} /> {editingSchema ? t.etm_update : t.etm_submit}
             </button>
             <button onClick={resetForm} className="px-5 py-2.5 font-mono text-sm rounded-lg transition-colors"

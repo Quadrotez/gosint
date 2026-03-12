@@ -15,7 +15,15 @@ import {
 interface CardPos { x: number; y: number }
 interface NoteCard { id: string; content: string; pos: CardPos; color: string }
 
-const NOTE_COLORS = ['#1e2330', '#1a2520', '#1a1a2e', '#201a1a', '#1e1e1a'];
+// Note colors: set of 5 palette entries that work in both dark and light themes via CSS vars
+// They're applied as backgroundColor, so we need actual values — use semi-transparent tints
+const NOTE_COLORS = [
+  'var(--bg-secondary)',
+  'color-mix(in srgb, #22c55e 12%, var(--bg-secondary))',
+  'color-mix(in srgb, #6366f1 12%, var(--bg-secondary))',
+  'color-mix(in srgb, #ef4444 12%, var(--bg-secondary))',
+  'color-mix(in srgb, #f59e0b 12%, var(--bg-secondary))',
+];
 const NOTE_COLOR_LABELS = ['Default', 'Green', 'Blue', 'Red', 'Yellow'];
 
 function useDrag(onMove: (dx: number, dy: number) => void) {

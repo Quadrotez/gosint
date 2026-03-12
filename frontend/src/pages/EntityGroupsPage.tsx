@@ -104,7 +104,7 @@ export default function EntityGroupsPage() {
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
           className="flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs font-semibold"
-          style={{ background: 'var(--accent)', color: '#0a0c0f' }}
+          style={{ background: 'var(--accent)', color: '#fff' }}
         >
           <Plus size={14} /> {lang === 'ru' ? 'Создать группу' : 'New Group'}
         </button>
@@ -192,7 +192,7 @@ export default function EntityGroupsPage() {
             <div className="flex gap-3">
               <button onClick={handleSubmit} disabled={!name.trim() || createMut.isPending || updateMut.isPending}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs font-semibold disabled:opacity-50"
-                style={{ background: 'var(--accent)', color: '#0a0c0f' }}>
+                style={{ background: 'var(--accent)', color: '#fff' }}>
                 <Check size={12} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
               </button>
               <button onClick={resetForm} className="px-4 py-2 rounded-lg font-mono text-xs border"

@@ -106,6 +106,7 @@ def update_settings(
     if body.site_icon_b64 is not None: s.site_icon_b64 = body.site_icon_b64 or None
     if body.site_title is not None: s.site_title = body.site_title or "OSINT Graph Platform"
     if body.registration_enabled is not None: s.registration_enabled = body.registration_enabled
+    if body.open_search_enabled is not None: s.open_search_enabled = body.open_search_enabled
     if body.max_accounts_per_ip is not None: s.max_accounts_per_ip = max(1, body.max_accounts_per_ip)
     s.updated_at = datetime.utcnow()
 
