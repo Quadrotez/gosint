@@ -16,6 +16,7 @@ export interface RelationshipTypeSchema {
   emoji?: string | null;
   color?: string | null;
   fields?: FieldDefinition[];
+  is_bidirectional: boolean;
   is_builtin: boolean;
   created_at: string;
 }
@@ -55,7 +56,6 @@ export interface Entity {
   value: string;
   metadata?: Record<string, unknown> | null;
   notes?: string | null;
-  notes?: string | null;
   canvas_layout?: Record<string, unknown> | null;
   created_at: string;
 }
@@ -64,7 +64,6 @@ export interface EntityCreate {
   type: string;
   value: string;
   metadata?: Record<string, unknown> | null;
-  notes?: string | null;
   notes?: string | null;
 }
 
@@ -154,6 +153,39 @@ export interface SiteSettings {
   site_title: string;
   registration_enabled: boolean;
   max_accounts_per_ip: number;
+  open_search_enabled: boolean;
+}
+
+export interface EntityGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  entity_ids: string[];
+  is_published: boolean;
+  is_imported: boolean;
+  source_published_group_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublishedEntityOut {
+  id: string;
+  published_entity_id?: string | null;
+  type: string;
+  value: string;
+  metadata?: Record<string, unknown> | null;
+  notes?: string | null;
+  is_masked: boolean;
+}
+
+export interface PublishedGroupOut {
+  id: string;
+  group_id: string;
+  group_name: string;
+  group_description?: string | null;
+  publisher_username: string;
+  published_at: string;
+  entities: PublishedEntityOut[];
 }
 
 export interface AdminUser extends User {

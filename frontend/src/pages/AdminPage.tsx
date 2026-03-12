@@ -408,6 +408,18 @@ export default function AdminPage() {
                   {lang === 'ru' ? 'Разрешить регистрацию' : 'Allow registration'}
                 </span>
               </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => updateSettingsMut.mutate({ open_search_enabled: !(settings as any).open_search_enabled })}
+                  className="w-10 h-5 rounded-full relative transition-colors cursor-pointer"
+                  style={{ background: (settings as any).open_search_enabled !== false ? 'var(--accent)' : 'var(--bg-secondary)' }}>
+                  <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                    style={{ left: (settings as any).open_search_enabled !== false ? '1.25rem' : '0.125rem' }} />
+                </div>
+                <span className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Открытый поиск' : 'Open Search'}
+                </span>
+              </label>
               <div>
                 <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
                   {lang === 'ru' ? 'Макс. аккаунтов с одного IP' : 'Max accounts per IP'}

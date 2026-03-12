@@ -263,3 +263,56 @@ export async function updateRelationshipTypeSchema(id: string, data: {
 export async function deleteRelationshipTypeSchema(id: string) {
   await api.delete(`/relationship-types/${id}`);
 }
+
+// ── Entity Groups ──────────────────────────────────────────────────────────────
+
+export async function getEntityGroups() {
+  const r = await api.get('/entity-groups');
+  return r.data as import('../types').EntityGroup[];
+}
+
+export async function createEntityGroup(data: { name: string; description?: string; entity_ids?: string[] }) {
+  const r = await api.post('/entity-groups', data);
+  return r.data as import('../types').EntityGroup;
+}
+
+export async function updateEntityGroup(id: string, data: { name?: string; description?: string; entity_ids?: string[] }) {
+  const r = await api.patch(`/entity-groups/${id}`, data);
+  return r.data as import('../types').EntityGroup;
+}
+
+export async function deleteEntityGroup(id: string) {
+  await api.delete(`/entity-groups/${id}`);
+}
+
+export async function publishEntityGroup(id: string) {
+  const r = await api.post(`/entity-groups/${id}/publish`);
+  return r.data as import('../types').EntityGroup;
+}
+
+export async function unpublishEntityGroup(id: string) {
+  const r = await api.delete(`/entity-groups/${id}/publish`);
+  return r.data as import('../types').EntityGroup;
+}
+
+// ── Open Search ────────────────────────────────────────────────────────────────
+
+export async function getPublishedGroups() {
+  const r = await api.get('/open-search/published');
+  return r.data as import('../types').PublishedGroupOut[];
+}
+
+export async function getPublishedGroupRelationships(groupId: string) {
+  const r = await api.get(`/open-search/published/${groupId}/relationships`);
+  return r.data as { relationships: any[] };
+}
+
+export async function importPublishedGroup(publishedGroupId: string) {
+  const r = await api.post(`/open-search/published/${publishedGroupId}/import`);
+  return r.data as import('../types').EntityGroup;
+}
+
+export async function importPublishedEntity(originalEntityId: string) {
+  const r = await api.post(`/open-search/published/entities/${originalEntityId}/import`);
+  return r.data as import('../types').EntityGroup;
+}

@@ -51,8 +51,8 @@ export default function Entities() {
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-mono font-semibold text-[#e8edf5]">{t.ent_title}</h1>
-          <p className="text-sm text-[#4a5568] font-mono mt-1">{t.ent_subtitle_count(entities.length)}</p>
+          <h1 className="text-2xl font-mono font-semibold text-[var(--text-primary)]">{t.ent_title}</h1>
+          <p className="text-sm text-[var(--text-muted)] font-mono mt-1">{t.ent_subtitle_count(entities.length)}</p>
         </div>
         <Link to="/create" className="px-4 py-2 bg-[#00d4ff] text-[#0a0c0f] font-mono text-sm font-semibold rounded-lg hover:bg-[#00b8e0] transition-colors">
           {t.ent_new}
@@ -61,20 +61,20 @@ export default function Entities() {
 
       <div className="flex gap-3 mb-6">
         <div className="flex-1 relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4a5568]" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={t.ent_filter_placeholder}
-            className="w-full pl-9 pr-4 py-2 bg-[#111318] border border-[#262d3d] rounded-lg text-sm font-mono text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460] transition-colors"
+            className="w-full pl-9 pr-4 py-2 bg-[var(--bg-card)] border border-[var(--border-light)] rounded-lg text-sm font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)] transition-colors"
           />
         </div>
         <div className="relative">
-          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4a5568]" />
+          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <select
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
-            className="pl-9 pr-8 py-2 bg-[#111318] border border-[#262d3d] rounded-lg text-sm font-mono text-[#e8edf5] outline-none focus:border-[#3a4460] appearance-none cursor-pointer"
+            className="pl-9 pr-8 py-2 bg-[var(--bg-card)] border border-[var(--border-light)] rounded-lg text-sm font-mono text-[var(--text-primary)] outline-none focus:border-[var(--border-hover)] appearance-none cursor-pointer"
           >
             <option value="">{t.ent_all_types}</option>
             {allTypeNames.map(typeName => (
@@ -84,20 +84,20 @@ export default function Entities() {
         </div>
       </div>
 
-      <div className="bg-[#111318] border border-[#1e2330] rounded-xl overflow-hidden">
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-[#1e2330]">
+            <tr className="border-b border-[var(--border)]">
               {[t.ent_col_type, t.ent_col_value, t.ent_col_meta, t.ent_col_created, ''].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-[10px] font-mono text-[#4a5568] uppercase tracking-widest">{h}</th>
+                <th key={h} className="text-left px-4 py-3 text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-[#4a5568] font-mono text-sm">{t.ent_loading}</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--text-muted)] font-mono text-sm">{t.ent_loading}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-[#4a5568] font-mono text-sm">
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[var(--text-muted)] font-mono text-sm">
                 {search || typeFilter ? t.ent_empty_filter : t.ent_empty}
               </td></tr>
             ) : filtered.map(entity => {
@@ -106,41 +106,41 @@ export default function Entities() {
                 ? getPersonDisplayName(entity)
                 : entity.value;
               return (
-                <tr key={entity.id} className="border-b border-[#1e2330] last:border-0 hover:bg-[#181c24] transition-colors group">
+                <tr key={entity.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-secondary)] transition-colors group">
                   <td className="px-4 py-3">
                     <EntityTypeBadge type={entity.type} size="sm" />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {entity.type === 'person' && meta.photo && (
-                        <img src={meta.photo} alt="" className="w-6 h-6 rounded-full object-cover border border-[#262d3d] flex-shrink-0" />
+                        <img src={meta.photo} alt="" className="w-6 h-6 rounded-full object-cover border border-[var(--border-light)] flex-shrink-0" />
                       )}
                       <div>
-                        <span className="font-mono text-sm text-[#e8edf5]">{displayName}</span>
+                        <span className="font-mono text-sm text-[var(--text-primary)]">{displayName}</span>
                         {entity.type === 'person' && meta.dob && (
-                          <div className="text-[10px] font-mono text-[#4a5568]">🎂 {meta.dob}</div>
+                          <div className="text-[10px] font-mono text-[var(--text-muted)]">🎂 {meta.dob}</div>
                         )}
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     {entity.metadata && Object.keys(entity.metadata).length > 0 ? (
-                      <span className="font-mono text-xs text-[#4a5568] truncate max-w-[180px] block">
+                      <span className="font-mono text-xs text-[var(--text-muted)] truncate max-w-[180px] block">
                         {Object.keys(entity.metadata).filter(k => k !== 'photo').slice(0, 3).join(', ')}
                       </span>
-                    ) : <span className="text-[#4a5568] text-xs font-mono">—</span>}
+                    ) : <span className="text-[var(--text-muted)] text-xs font-mono">—</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-xs font-mono text-[#4a5568]">{formatDate(entity.created_at)}</span>
+                    <span className="text-xs font-mono text-[var(--text-muted)]">{formatDate(entity.created_at)}</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Link to={`/entities/${entity.id}`} className="p-1.5 rounded hover:bg-[#262d3d] text-[#7a8ba8] hover:text-[#00d4ff] transition-colors">
+                      <Link to={`/entities/${entity.id}`} className="p-1.5 rounded hover:bg-[#262d3d] text-[var(--text-muted)] hover:text-[#00d4ff] transition-colors">
                         <ExternalLink size={13} />
                       </Link>
                       <button
                         onClick={() => setConfirmId(entity.id)}
-                        className="p-1.5 rounded hover:bg-[#262d3d] text-[#7a8ba8] hover:text-[#ff4444] transition-colors"
+                        className="p-1.5 rounded hover:bg-[#262d3d] text-[var(--text-muted)] hover:text-[#ff4444] transition-colors"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -154,7 +154,7 @@ export default function Entities() {
       </div>
 
       {filtered.length > 0 && (
-        <p className="text-xs font-mono text-[#4a5568] mt-3 text-right">
+        <p className="text-xs font-mono text-[var(--text-muted)] mt-3 text-right">
           {t.ent_showing(filtered.length, entities.length)}
         </p>
       )}

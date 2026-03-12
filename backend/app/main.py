@@ -8,6 +8,8 @@ from .routers import entities, relationships, search, import_data, stats, entity
 from .routers import relationship_types as rel_types_module
 from .routers import auth as auth_router
 from .routers import admin as admin_router
+from .routers import entity_groups as entity_groups_router
+from .routers import open_search as open_search_router
 from .auth import hash_password
 from .encryption import generate_salt
 
@@ -53,6 +55,60 @@ def run_migrations():
         add_col("entity_type_schemas", "user_id", "TEXT")
         add_col("entity_type_schemas", "icon_image", "TEXT")
         add_col("site_settings", "database_url", "TEXT")
+        add_col("site_settings", "open_search_enabled", "BOOLEAN")
+        add_col("relationship_type_schemas", "is_bidirectional", "BOOLEAN")
+        # New columns for import tracking
+        add_col("entities", "imported_from_group_id", "TEXT")
+        add_col("entity_groups", "is_imported", "BOOLEAN DEFAULT 0")
+        add_col("entity_groups", "source_published_group_id", "TEXT")
+        # Entity groups table (new)
+        if "entity_groups" not in inspector.get_table_names():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE entity_groups (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        entity_ids TEXT,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                """))
+                conn.commit()
+            except Exception:
+                pass
+        # Published groups table (new)
+        if "published_groups" not in inspector.get_table_names():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE published_groups (
+                        id TEXT PRIMARY KEY,
+                        group_id TEXT NOT NULL REFERENCES entity_groups(id) ON DELETE CASCADE,
+                        publisher_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        published_at DATETIME
+                    )
+                """))
+                conn.commit()
+            except Exception:
+                pass
+        # Published entities table (plaintext snapshots for open search)
+        if "published_entities" not in inspector.get_table_names():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE published_entities (
+                        id TEXT PRIMARY KEY,
+                        published_group_id TEXT NOT NULL REFERENCES published_groups(id) ON DELETE CASCADE,
+                        original_entity_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        metadata TEXT,
+                        notes TEXT
+                    )
+                """))
+                conn.commit()
+            except Exception:
+                pass
         # Relationship type schemas table (new)
         if "relationship_type_schemas" not in inspector.get_table_names():
             try:
@@ -118,7 +174,8 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 for router in [auth_router.router, admin_router.router, entities.router, relationships.router,
                search.router, import_data.router, stats.router, entity_schemas.router,
-               backup.router, webdav_sync.router, attachments.router, rel_types_module.router]:
+               backup.router, webdav_sync.router, attachments.router, rel_types_module.router,
+               entity_groups_router.router, open_search_router.router]:
     app.include_router(router, prefix="/api")
 
 

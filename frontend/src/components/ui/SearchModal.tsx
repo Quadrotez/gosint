@@ -67,11 +67,11 @@ export default function SearchModal() {
         key={e.id}
         onClick={() => { navigate(`/entities/${e.id}`); closeSearch(); }}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
-          idx === activeIdx ? 'bg-[#1e2330]' : 'hover:bg-[#181c24]'
+          idx === activeIdx ? 'bg-[var(--border)]' : 'hover:bg-[var(--bg-secondary)]'
         }`}
       >
         {e.type === 'person' && meta.photo
-          ? <img src={meta.photo} alt="" className="w-7 h-7 rounded-full object-cover border border-[#262d3d] flex-shrink-0" />
+          ? <img src={meta.photo} alt="" className="w-7 h-7 rounded-full object-cover border border-[var(--border-light)] flex-shrink-0" />
           : (
             <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
               style={{ backgroundColor: `${color}18`, border: `1px solid ${color}30` }}>
@@ -80,7 +80,7 @@ export default function SearchModal() {
           )
         }
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-mono text-[#e8edf5] truncate">{displayName}</div>
+          <div className="text-sm font-mono text-[var(--text-primary)] truncate">{displayName}</div>
           <div className="text-[10px] font-mono" style={{ color }}>{getLabel(e.type)}</div>
         </div>
       </button>
@@ -91,39 +91,39 @@ export default function SearchModal() {
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4" onClick={closeSearch}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
-        className="relative bg-[#111318] border border-[#262d3d] rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl"
+        className="relative bg-[var(--bg-card)] border border-[var(--border-light)] rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#1e2330]">
-          <Search size={16} className="text-[#4a5568] flex-shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+          <Search size={16} className="text-[var(--text-muted)] flex-shrink-0" />
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder={t.search_placeholder}
-            className="flex-1 bg-transparent font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none"
+            className="flex-1 bg-transparent font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none"
           />
-          <button onClick={closeSearch} className="text-[#4a5568] hover:text-[#7a8ba8]">
+          <button onClick={closeSearch} className="text-[var(--text-muted)] hover:text-[#7a8ba8]">
             <X size={16} />
           </button>
         </div>
 
         <div className="p-2 max-h-[60vh] overflow-y-auto">
           {query.length < 2 ? (
-            <p className="text-xs font-mono text-[#4a5568] text-center py-6">{t.search_hint}</p>
+            <p className="text-xs font-mono text-[var(--text-muted)] text-center py-6">{t.search_hint}</p>
           ) : results.length === 0 ? (
-            <p className="text-xs font-mono text-[#4a5568] text-center py-6">{t.search_empty(query)}</p>
+            <p className="text-xs font-mono text-[var(--text-muted)] text-center py-6">{t.search_empty(query)}</p>
           ) : (
             <>
               {people.length > 0 && (
                 <div className="mb-2">
-                  <div className="px-3 py-1.5 text-[10px] font-mono text-[#4a5568] uppercase tracking-widest">{t.search_section_people}</div>
+                  <div className="px-3 py-1.5 text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">{t.search_section_people}</div>
                   {people.map((e, i) => renderEntity(e, i))}
                 </div>
               )}
               {others.length > 0 && (
                 <div>
-                  <div className="px-3 py-1.5 text-[10px] font-mono text-[#4a5568] uppercase tracking-widest">{t.search_section_other}</div>
+                  <div className="px-3 py-1.5 text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">{t.search_section_other}</div>
                   {others.map((e, i) => renderEntity(e, people.length + i))}
                 </div>
               )}
@@ -131,10 +131,10 @@ export default function SearchModal() {
           )}
         </div>
 
-        <div className="px-4 py-2 border-t border-[#1e2330] flex gap-4">
-          <span className="text-[10px] font-mono text-[#4a5568]">↑↓ navigate</span>
-          <span className="text-[10px] font-mono text-[#4a5568]">Enter {t.search_shortcut}</span>
-          <span className="text-[10px] font-mono text-[#4a5568]">Esc {t.search_close}</span>
+        <div className="px-4 py-2 border-t border-[var(--border)] flex gap-4">
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">↑↓ navigate</span>
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">Enter {t.search_shortcut}</span>
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">Esc {t.search_close}</span>
         </div>
       </div>
     </div>

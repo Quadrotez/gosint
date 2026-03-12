@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSearchStore } from '../../store';
 import { useLang } from '../../i18n/LangProvider';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, Network, Search, Upload, Plus, GitBranch, Cpu, Shapes, Settings, Menu, X, User, Shield, LogOut } from 'lucide-react';
+import { getPublicSettings } from '../../api';
+import { useQuery } from '@tanstack/react-query';
+import { LayoutDashboard, Network, Search, Upload, Plus, GitBranch, Cpu, Shapes, Settings, Menu, X, User, Shield, LogOut, Users, Globe } from 'lucide-react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -13,12 +15,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  const { data: siteSettings } = useQuery({
+    queryKey: ['public-settings'],
+    queryFn: getPublicSettings,
+    staleTime: 60_000,
+  });
+  const openSearchEnabled = (siteSettings as any)?.open_search_enabled !== false;
+
   const NAV = [
     { path: '/', icon: LayoutDashboard, label: t.nav_dashboard },
     { path: '/entities', icon: Network, label: t.nav_entities },
     { path: '/graph', icon: GitBranch, label: t.nav_graph },
     { path: '/entity-types', icon: Shapes, label: lang === 'ru' ? 'Типы сущностей' : 'Entity Types' },
     { path: '/relationship-types', icon: Cpu, label: lang === 'ru' ? 'Типы связей' : 'Rel. Types' },
+    { path: '/entity-groups', icon: Users, label: lang === 'ru' ? 'Группы сущностей' : 'Entity Groups' },
+    ...(openSearchEnabled ? [{ path: '/open-search', icon: Globe, label: lang === 'ru' ? 'Открытый поиск' : 'Open Search' }] : []),
     { path: '/import', icon: Upload, label: t.nav_import },
     { path: '/create', icon: Plus, label: t.nav_new },
     { path: '/settings', icon: Settings, label: t.settings_title },

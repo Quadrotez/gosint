@@ -19,29 +19,70 @@
 
 /* ── Light theme ── */
 html.theme-light {
-  --bg-main: #f0f2f5;
+  --bg-main: #f0f4f8;
   --bg-card: #ffffff;
-  --bg-secondary: #f5f7fa;
+  --bg-secondary: #f1f5f9;
   --border: #e2e8f0;
   --border-light: #cbd5e0;
-  --border-hover: #a0aec0;
-  --text-primary: #1a202c;
-  --text-secondary: #2d3748;
-  --text-muted: #718096;
-  --accent: #0095b8;
-  --accent-dim: #0095b818;
+  --border-hover: #94a3b8;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --accent: #0369a1;
+  --accent-dim: #0369a115;
+  color-scheme: light;
 }
 
 html.theme-light body,
 html.theme-light #root {
-  background: #f0f2f5;
-  color: #1a202c;
+  background: #f0f4f8;
+  color: #0f172a;
 }
 
-html.theme-light ::-webkit-scrollbar-track { background: #f0f2f5; }
+/* Sidebar */
+html.theme-light aside {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* All inputs / textareas / selects */
+html.theme-light input:not([type="file"]):not([type="range"]):not([type="checkbox"]),
+html.theme-light textarea,
+html.theme-light select {
+  background: #ffffff !important;
+  border-color: #cbd5e0 !important;
+  color: #0f172a !important;
+}
+html.theme-light input::placeholder,
+html.theme-light textarea::placeholder { color: #94a3b8 !important; }
+
+/* Any element that still has old dark backgrounds hardcoded via style= attribute */
+html.theme-light [style*="background: #0a0c0f"],
+html.theme-light [style*="background:#0a0c0f"],
+html.theme-light [style*="background-color: #0a0c0f"],
+html.theme-light [style*="background-color:#0a0c0f"] { background: #f0f4f8 !important; }
+
+html.theme-light [style*="background: #111318"],
+html.theme-light [style*="background:#111318"] { background: #ffffff !important; }
+
+html.theme-light [style*="background: #181c24"],
+html.theme-light [style*="background:#181c24"] { background: #f1f5f9 !important; }
+
+html.theme-light [style*="background: #1e2330"],
+html.theme-light [style*="background:#1e2330"] { background: #e2e8f0 !important; }
+
+/* Text overrides from inline styles */
+html.theme-light [style*="color: #e8edf5"],
+html.theme-light [style*="color:#e8edf5"] { color: #0f172a !important; }
+
+html.theme-light [style*="color: #4a5568"],
+html.theme-light [style*="color:#4a5568"] { color: #64748b !important; }
+
+/* Scrollbar */
+html.theme-light ::-webkit-scrollbar-track { background: #f0f4f8; }
 html.theme-light ::-webkit-scrollbar-thumb { background: #cbd5e0; }
-html.theme-light ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
-html.theme-light select option { background: #ffffff; color: #1a202c; }
+html.theme-light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+html.theme-light select option { background: #ffffff; color: #0f172a; }
 
 * {
   box-sizing: border-box;

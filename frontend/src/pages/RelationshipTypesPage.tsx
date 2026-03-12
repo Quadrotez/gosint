@@ -44,6 +44,7 @@ export default function RelationshipTypesPage() {
   const [color, setColor] = useState(PALETTE[4]);
   const [description, setDescription] = useState('');
   const [fields, setFields] = useState<FieldRow[]>([]);
+  const [isBidirectional, setIsBidirectional] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const createMutation = useMutation({
@@ -67,7 +68,7 @@ export default function RelationshipTypesPage() {
   const resetForm = () => {
     setShowForm(false); setEditingSchema(null);
     setName(''); setLabelEn(''); setLabelRu(''); setEmoji('🔗');
-    setColor(PALETTE[4]); setDescription(''); setFields([]); setErrors({});
+    setColor(PALETTE[4]); setDescription(''); setFields([]); setIsBidirectional(false); setErrors({});
   };
 
   const startEdit = (schema: RelationshipTypeSchema) => {
@@ -77,6 +78,7 @@ export default function RelationshipTypesPage() {
     setEmoji(schema.emoji || '🔗');
     setColor(schema.color || PALETTE[4]);
     setDescription(schema.description || '');
+    setIsBidirectional((schema as any).is_bidirectional || false);
     setFields((schema.fields || []).map(f => ({
       name: f.name, label_en: f.label_en, label_ru: f.label_ru || '',
       field_type: f.field_type as any, required: f.required,
@@ -106,12 +108,14 @@ export default function RelationshipTypesPage() {
       updateMutation.mutate({
         id: editingSchema!.id,
         data: { label_en: labelEn.trim(), label_ru: labelRu.trim() || undefined,
-          emoji: emoji || '🔗', color, description: description.trim() || undefined, fields: fieldsList },
+          emoji: emoji || '🔗', color, description: description.trim() || undefined, fields: fieldsList,
+          is_bidirectional: isBidirectional },
       });
     } else {
       createMutation.mutate({
         name: name.trim(), label_en: labelEn.trim(), label_ru: labelRu.trim() || undefined,
         emoji: emoji || '🔗', color, description: description.trim() || undefined, fields: fieldsList,
+        is_bidirectional: isBidirectional,
       });
     }
   };
@@ -167,7 +171,7 @@ export default function RelationshipTypesPage() {
                 <input value={name}
                   onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                   placeholder="e.g. works_for"
-                  className="w-full px-3 py-2.5 rounded-lg font-mono text-sm placeholder-[#4a5568] outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg font-mono text-sm placeholder-[var(--text-muted)] outline-none"
                   style={{ ...inputStyle, borderColor: errors.name ? '#ff4444' : 'var(--border-light)' }} />
                 {errors.name && <p className="text-[#ff4444] text-[10px] font-mono mt-1">{errors.name}</p>}
               </div>
@@ -221,6 +225,26 @@ export default function RelationshipTypesPage() {
                 placeholder={lang === 'ru' ? 'Необязательное описание типа связи' : 'Optional description'}
                 className="w-full px-3 py-2.5 rounded-lg font-mono text-sm outline-none"
                 style={inputStyle} />
+            </div>
+            <div className="col-span-2">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div
+                  onClick={() => setIsBidirectional(v => !v)}
+                  className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                  style={{ background: isBidirectional ? 'var(--accent)' : 'var(--border-light)' }}
+                >
+                  <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: isBidirectional ? 'translateX(22px)' : 'translateX(2px)' }} />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {lang === 'ru' ? 'Двусторонняя связь' : 'Bidirectional relationship'}
+                  </div>
+                  <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                    {lang === 'ru' ? 'Стрелки на обоих концах (напр. «друзья», «коллеги»)' : 'Arrows on both ends (e.g. friends, colleagues)'}
+                  </div>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -319,6 +343,11 @@ export default function RelationshipTypesPage() {
                       <div className="font-mono text-sm" style={{ color: col }}>{label}</div>
                       <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
                         {schema.name} · {schema.fields?.length ?? 0} {lang === 'ru' ? 'полей' : 'fields'}
+                        {(schema as any).is_bidirectional && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px]" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                            ⇄ {lang === 'ru' ? 'двусторонняя' : 'bidirectional'}
+                          </span>
+                        )}
                       </div>
                       {schema.description && (
                         <div className="text-[10px] font-mono mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>{schema.description}</div>
@@ -352,6 +381,11 @@ export default function RelationshipTypesPage() {
                       <span className="ml-1.5 px-1 rounded" style={{ background: 'var(--border)', color: 'var(--text-muted)' }}>
                         {lang === 'ru' ? 'встроенный' : 'built-in'}
                       </span>
+                      {(schema as any).is_bidirectional && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px]" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                          ⇄
+                        </span>
+                      )}
                     </div>
                   </div>
                   <button onClick={() => startEdit(schema)} className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded" style={{ color: 'var(--text-muted)' }}><Edit2 size={13} /></button>

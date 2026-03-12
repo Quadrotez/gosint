@@ -15,7 +15,7 @@ import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import MetadataEditor from '../components/ui/MetadataEditor';
 import MiniGraph from '../components/graph/MiniGraph';
 import DatePicker from '../components/ui/DatePicker';
-import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink, Search } from 'lucide-react';
 import { getAttachments, uploadAttachment, deleteAttachment, type AttachmentOut } from '../api';
 
 export default function EntityPage() {
@@ -55,7 +55,6 @@ export default function EntityPage() {
   const { data: allEntities = [] } = useQuery({
     queryKey: ['entities'],
     queryFn: () => getEntities({ limit: 500 }),
-    enabled: addRelOpen,
   });
 
   const addRelMutation = useMutation({
@@ -181,7 +180,9 @@ export default function EntityPage() {
                   >
                     {meta.photo
                       ? <img src={meta.photo} alt="" className="w-full h-full object-cover" />
-                      : <User size={28} style={{ color: 'var(--text-muted)' }} />
+                      : meta.custom_icon
+                        ? <span className="text-3xl">{meta.custom_icon}</span>
+                        : <User size={28} style={{ color: 'var(--text-muted)' }} />
                     }
                   </div>
                   <div
@@ -199,6 +200,21 @@ export default function EntityPage() {
                     >
                       <X size={10} className="text-white" />
                     </button>
+                  )}
+                  {/* Emoji icon for person (when no photo) */}
+                  {!meta.photo && (
+                    <div className="mt-1">
+                      <EntityIconPicker
+                        currentIcon={meta.custom_icon || ''}
+                        defaultIcon={''}
+                        onChange={icon => {
+                          const newMeta = { ...meta };
+                          if (icon) newMeta.custom_icon = icon; else delete newMeta.custom_icon;
+                          updateMutation.mutate({ metadata: newMeta });
+                        }}
+                        lang={lang}
+                      />
+                    </div>
                   )}
                 </div>
 
@@ -321,15 +337,32 @@ export default function EntityPage() {
                       {allKeys.map(k => {
                         const schemaDef = schemaExtras.find(f => f.name === k);
                         const label = schemaDef ? ((lang === 'ru' && schemaDef.label_ru) ? schemaDef.label_ru : schemaDef.label_en) : k;
+                        const ftype = schemaDef?.field_type || 'text';
                         return (
-                          <div key={k}>
+                          <div key={k} className={ftype === 'entities' ? 'col-span-2' : ''}>
                             <div className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
                             {editingExtras ? (
-                              schemaDef?.field_type === 'date' ? (
+                              ftype === 'date' ? (
                                 <DatePicker
                                   value={extrasEdits[k] ?? ''}
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
                                   dateLocale={dateLocale}
+                                  lang={lang}
+                                />
+                              ) : ftype === 'entity' ? (
+                                <InlineEntityPicker
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
+                                  entities={allEntities}
+                                  schemas={schemas}
+                                  lang={lang}
+                                />
+                              ) : ftype === 'entities' ? (
+                                <InlineEntitiesPicker
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
+                                  entities={allEntities}
+                                  schemas={schemas}
                                   lang={lang}
                                 />
                               ) : (
@@ -341,9 +374,13 @@ export default function EntityPage() {
                                 />
                               )
                             ) : (
-                              <span className="text-xs font-mono" style={{ color: meta[k] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                                {meta[k] ? String(meta[k]) : '—'}
-                              </span>
+                              <EntityFieldDisplay
+                                value={meta[k] ? String(meta[k]) : ''}
+                                fieldType={ftype}
+                                entities={allEntities}
+                                schemas={schemas}
+                                lang={lang}
+                              />
                             )}
                           </div>
                         );
@@ -357,10 +394,52 @@ export default function EntityPage() {
             /* NON-PERSON CARD */
             <div className="rounded-xl p-6" style={cardStyle}>
               <div className="flex items-start justify-between mb-4">
-                <div>
-                  <EntityTypeBadge type={entity.type} />
-                  <h1 className="text-xl font-mono font-semibold mt-2" style={{ color }}>{entity.value}</h1>
-                  <p className="text-xs font-mono mt-1" style={{ color: 'var(--text-muted)' }}>{entity.id}</p>
+                <div className="flex items-start gap-4">
+                  {/* Avatar: photo or emoji icon */}
+                  <div className="flex-shrink-0 space-y-1.5">
+                    <div className="relative group" onClick={() => photoRef.current?.click()}>
+                      <div
+                        className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer"
+                        style={{ background: `${color}18`, border: `1px solid ${color}40` }}
+                      >
+                        {meta.photo
+                          ? <img src={meta.photo} alt="" className="w-full h-full object-cover" />
+                          : <span className="text-2xl">{meta.custom_icon || customSchema?.icon || '🔍'}</span>
+                        }
+                      </div>
+                      <div className="absolute inset-0 rounded-xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                        <Camera size={14} className="text-white" />
+                      </div>
+                      <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                        onChange={e => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])} />
+                      {meta.photo && (
+                        <button
+                          onClick={e => { e.stopPropagation(); removePhoto(); }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[#0a0c0f] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={10} className="text-white" />
+                        </button>
+                      )}
+                    </div>
+                    {/* Emoji icon quick-set */}
+                    {!meta.photo && (
+                      <EntityIconPicker
+                        currentIcon={meta.custom_icon || ''}
+                        defaultIcon={customSchema?.icon || '🔍'}
+                        onChange={icon => {
+                          const newMeta = { ...meta };
+                          if (icon) newMeta.custom_icon = icon; else delete newMeta.custom_icon;
+                          updateMutation.mutate({ metadata: newMeta });
+                        }}
+                        lang={lang}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <EntityTypeBadge type={entity.type} />
+                    <h1 className="text-xl font-mono font-semibold mt-2" style={{ color }}>{entity.value}</h1>
+                    <p className="text-xs font-mono mt-1" style={{ color: 'var(--text-muted)' }}>{entity.id}</p>
+                  </div>
                 </div>
               </div>
               <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{t.ep_added} {formatDate(entity.created_at)}</div>
@@ -428,7 +507,7 @@ export default function EntityPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {allStructured.map(field => (
-                          <div key={field.key}>
+                          <div key={field.key} className={field.type === 'entities' ? 'col-span-2' : ''}>
                             <div className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--text-muted)' }}>{field.label}</div>
                             {editingExtras ? (
                               field.type === 'date' ? (
@@ -436,6 +515,22 @@ export default function EntityPage() {
                                   value={extrasEdits[field.key] ?? ''}
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
                                   dateLocale={dateLocale}
+                                  lang={lang}
+                                />
+                              ) : field.type === 'entity' ? (
+                                <InlineEntityPicker
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
+                                  entities={allEntities}
+                                  schemas={schemas}
+                                  lang={lang}
+                                />
+                              ) : field.type === 'entities' ? (
+                                <InlineEntitiesPicker
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
+                                  entities={allEntities}
+                                  schemas={schemas}
                                   lang={lang}
                                 />
                               ) : (
@@ -448,9 +543,13 @@ export default function EntityPage() {
                                 />
                               )
                             ) : (
-                              <div className="text-xs font-mono" style={{ color: meta[field.key] ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                                {meta[field.key] || '—'}
-                              </div>
+                              <EntityFieldDisplay
+                                value={meta[field.key] || ''}
+                                fieldType={field.type}
+                                entities={allEntities}
+                                schemas={schemas}
+                                lang={lang}
+                              />
                             )}
                           </div>
                         ))}
@@ -978,6 +1077,302 @@ function EntityAttachments({ entityId, lang }: { entityId: string; lang: string 
         </p>
       )}
       {uploading && <p className="text-xs font-mono animate-pulse" style={{ color: 'var(--text-muted)' }}>Uploading…</p>}
+    </div>
+  );
+}
+
+// ── Helper: display entity/entities field as chips ───────────────────────────
+
+function EntityFieldDisplay({
+  value, fieldType, entities, schemas, lang,
+}: {
+  value: string; fieldType: string;
+  entities: any[]; schemas: any[]; lang: string;
+}) {
+  if (!value) return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>—</span>;
+
+  const getLabel = (e: any) => {
+    const m = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person' ? [m.last_name, m.first_name].filter(Boolean).join(' ') || e.value : e.value;
+  };
+  const getTypeIcon = (type: string) => {
+    const s = schemas.find((x: any) => x.name === type);
+    return s?.icon || '🔍';
+  };
+
+  if (fieldType === 'entity') {
+    const ent = entities.find(e => e.id === value);
+    if (!ent) return <span className="text-xs font-mono text-red-400 truncate">{value}</span>;
+    return (
+      <a href={`/entities/${ent.id}`} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-xs transition-colors hover:opacity-80"
+        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+        <span>{getTypeIcon(ent.type)}</span>
+        <span>{getLabel(ent)}</span>
+      </a>
+    );
+  }
+
+  if (fieldType === 'entities') {
+    const ids = value.split(',').filter(Boolean);
+    if (!ids.length) return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>—</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {ids.map(id => {
+          const ent = entities.find(e => e.id === id);
+          if (!ent) return <span key={id} className="text-xs font-mono text-red-400">{id.slice(0, 8)}…</span>;
+          return (
+            <a key={id} href={`/entities/${ent.id}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-xs transition-colors hover:opacity-80"
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+              <span>{getTypeIcon(ent.type)}</span>
+              <span>{getLabel(ent)}</span>
+            </a>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>;
+}
+
+// ── Inline entity picker for EntityPage edit mode ────────────────────────────
+
+function InlineEntityPicker({ value, onChange, entities, schemas, lang }: {
+  value: string; onChange: (v: string) => void;
+  entities: any[]; schemas: any[]; lang: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const getLabel = (e: any) => {
+    const m = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person' ? [m.last_name, m.first_name].filter(Boolean).join(' ') || e.value : e.value;
+  };
+  const getTypeLabel = (type: string) => {
+    const s = schemas.find((x: any) => x.name === type);
+    if (!s) return type;
+    return lang === 'ru' && s.label_ru ? s.label_ru : s.label_en;
+  };
+  const getIcon = (type: string) => schemas.find((x: any) => x.name === type)?.icon || '🔍';
+
+  const filtered = entities.filter(e => {
+    if (!search.trim()) return true;
+    return getLabel(e).toLowerCase().includes(search.toLowerCase()) || e.type.toLowerCase().includes(search.toLowerCase());
+  }).slice(0, 20);
+
+  const selected = value ? entities.find(e => e.id === value) : null;
+
+  return (
+    <div className="relative">
+      <div onClick={() => setOpen(v => !v)}
+        className="flex items-center justify-between px-2 py-1.5 rounded font-mono text-xs cursor-pointer border"
+        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}>
+        {selected ? (
+          <span className="flex items-center gap-1.5">
+            <span>{getIcon(selected.type)}</span>
+            <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>[{getTypeLabel(selected.type)}]</span>
+            {getLabel(selected)}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>{lang === 'ru' ? 'Выбрать...' : 'Select...'}</span>
+        )}
+        <Search size={11} style={{ color: 'var(--text-muted)' }} />
+      </div>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full rounded-lg shadow-xl overflow-hidden"
+          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+          <div className="p-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+              className="w-full px-2 py-1 rounded font-mono text-xs outline-none"
+              style={{ background: 'var(--bg-main)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+          </div>
+          <div className="max-h-44 overflow-y-auto">
+            {value && <button onClick={() => { onChange(''); setOpen(false); }} className="w-full px-3 py-1.5 text-left font-mono text-xs text-red-400 hover:bg-red-400/10">✕ {lang === 'ru' ? 'Сбросить' : 'Clear'}</button>}
+            {filtered.map(e => (
+              <button key={e.id} onClick={() => { onChange(e.id); setOpen(false); setSearch(''); }}
+                className="w-full px-3 py-1.5 text-left font-mono text-xs flex items-center gap-2 hover:bg-[var(--border)]"
+                style={{ color: e.id === value ? 'var(--accent)' : 'var(--text-primary)' }}>
+                <span>{getIcon(e.type)}</span>
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>[{getTypeLabel(e.type)}]</span>
+                {getLabel(e)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineEntitiesPicker({ value, onChange, entities, schemas, lang }: {
+  value: string; onChange: (v: string) => void;
+  entities: any[]; schemas: any[]; lang: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const selectedIds = value ? value.split(',').filter(Boolean) : [];
+  const getLabel = (e: any) => {
+    const m = (e.metadata || {}) as Record<string, string>;
+    return e.type === 'person' ? [m.last_name, m.first_name].filter(Boolean).join(' ') || e.value : e.value;
+  };
+  const getIcon = (type: string) => schemas.find((x: any) => x.name === type)?.icon || '🔍';
+  const getTypeLabel = (type: string) => {
+    const s = schemas.find((x: any) => x.name === type);
+    return s ? (lang === 'ru' && s.label_ru ? s.label_ru : s.label_en) : type;
+  };
+
+  const toggle = (id: string) => {
+    const next = selectedIds.includes(id) ? selectedIds.filter(x => x !== id) : [...selectedIds, id];
+    onChange(next.join(','));
+  };
+
+  const filtered = entities.filter(e => {
+    if (!search.trim()) return true;
+    return getLabel(e).toLowerCase().includes(search.toLowerCase());
+  }).slice(0, 30);
+
+  return (
+    <div>
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {selectedIds.map(id => {
+            const e = entities.find(x => x.id === id);
+            if (!e) return null;
+            return (
+              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-xs"
+                style={{ background: 'var(--border)', color: 'var(--text-primary)' }}>
+                <span>{getIcon(e.type)}</span>
+                {getLabel(e)}
+                <button onClick={() => toggle(id)} className="ml-0.5" style={{ color: 'var(--text-muted)' }}>×</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <div className="relative">
+        <button onClick={() => setOpen(v => !v)}
+          className="flex items-center gap-2 px-2 py-1.5 rounded font-mono text-xs border"
+          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
+          <Search size={11} /> {lang === 'ru' ? 'Добавить сущность...' : 'Add entity...'}
+        </button>
+        {open && (
+          <div className="absolute z-30 mt-1 w-full min-w-[260px] rounded-lg shadow-xl overflow-hidden"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+            <div className="p-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+              <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+                className="w-full px-2 py-1 rounded font-mono text-xs outline-none"
+                style={{ background: 'var(--bg-main)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+            </div>
+            <div className="max-h-44 overflow-y-auto">
+              {filtered.map(e => (
+                <button key={e.id} onClick={() => { toggle(e.id); }}
+                  className="w-full px-3 py-1.5 text-left font-mono text-xs flex items-center gap-2 hover:bg-[var(--border)]"
+                  style={{ color: selectedIds.includes(e.id) ? 'var(--accent)' : 'var(--text-primary)' }}>
+                  {selectedIds.includes(e.id) && <Check size={10} style={{ color: 'var(--accent)' }} />}
+                  <span>{getIcon(e.type)}</span>
+                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>[{getTypeLabel(e.type)}]</span>
+                  {getLabel(e)}
+                </button>
+              ))}
+            </div>
+            <div className="p-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setOpen(false)} className="w-full px-2 py-1 font-mono text-xs text-center rounded"
+                style={{ background: 'var(--accent)', color: '#000' }}>
+                {lang === 'ru' ? 'Готово' : 'Done'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── EntityIconPicker: emoji icon picker for per-entity custom icon ────────────
+
+const COMMON_ICONS = [
+  '👤','👥','🧑','👩','👨','🧑‍💼','👔','🕵️','🧑‍🎓','🧑‍⚕️',
+  '📱','📞','☎️','💬','📲','✉️','📧','📨','💌','📩',
+  '🌐','🔗','💻','🖥️','⌨️','🖱️','📡','📶','🛜','🔌',
+  '🏢','🏗️','🏦','🏥','🏛️','🏠','🏡','🏘️','🏚️','🔑',
+  '🚗','🚕','✈️','🚢','🚂','🚁','🛸','🛵','🏍️','🚐',
+  '💰','💵','💳','₿','🪙','💎','📈','📊','🏦','💹',
+  '🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🔶','🔷',
+  '⭐','🔥','💥','⚡','🌊','🌪️','🎯','🏆','🎖️','🥇',
+  '🔒','🔓','🛡️','⚔️','🗡️','🔫','💣','🧨','🪤','🔐',
+  '📁','📂','📋','📌','📍','🗂️','🗃️','📦','🗄️','🗑️',
+];
+
+function EntityIconPicker({ currentIcon, defaultIcon, onChange, lang }: {
+  currentIcon: string; defaultIcon: string;
+  onChange: (icon: string) => void; lang: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customInput, setCustomInput] = useState('');
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[10px] transition-colors"
+        style={{ background: 'var(--border)', color: 'var(--text-muted)' }}
+        title={lang === 'ru' ? 'Установить иконку' : 'Set icon'}
+      >
+        {currentIcon ? <span>{currentIcon}</span> : <span>🎨</span>}
+        <span>{lang === 'ru' ? 'иконка' : 'icon'}</span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-2xl p-3 w-72"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ru' ? 'Выбрать иконку' : 'Choose icon'}
+            </div>
+            <div className="grid grid-cols-10 gap-1 mb-3">
+              {COMMON_ICONS.map(icon => (
+                <button key={icon} onClick={() => { onChange(icon); setOpen(false); }}
+                  className="w-6 h-6 text-base rounded hover:bg-[var(--bg-secondary)] flex items-center justify-center transition-colors"
+                  style={{ background: currentIcon === icon ? 'var(--accent-dim)' : 'transparent',
+                           outline: currentIcon === icon ? '1px solid var(--accent)' : 'none' }}>
+                  {icon}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={customInput}
+                onChange={e => setCustomInput(e.target.value)}
+                placeholder={lang === 'ru' ? 'Свой эмодзи...' : 'Custom emoji...'}
+                className="flex-1 px-2 py-1 rounded font-mono text-xs outline-none border"
+                style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
+                maxLength={4}
+              />
+              <button
+                onClick={() => { if (customInput.trim()) { onChange(customInput.trim()); setOpen(false); setCustomInput(''); } }}
+                className="px-2 py-1 rounded font-mono text-xs font-semibold"
+                style={{ background: 'var(--accent)', color: '#000' }}
+              >
+                {lang === 'ru' ? 'Ок' : 'Set'}
+              </button>
+            </div>
+            {(currentIcon || defaultIcon) && (
+              <button
+                onClick={() => { onChange(''); setOpen(false); }}
+                className="w-full text-center font-mono text-[10px] py-1 rounded hover:bg-[var(--bg-secondary)]"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {lang === 'ru' ? '✕ Сбросить к иконке типа' : '✕ Reset to type icon'}
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

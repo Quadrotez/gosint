@@ -78,6 +78,7 @@ class SiteSettingsOut(BaseModel):
     site_title: str
     registration_enabled: bool
     max_accounts_per_ip: int
+    open_search_enabled: bool
 
     class Config:
         from_attributes = True
@@ -90,6 +91,7 @@ class SiteSettingsUpdate(BaseModel):
     site_title: Optional[str] = None
     registration_enabled: Optional[bool] = None
     max_accounts_per_ip: Optional[int] = None
+    open_search_enabled: Optional[bool] = None
 
 
 # ── Entity Type Schemas ───────────────────────────────────────────────────────
@@ -276,6 +278,7 @@ class RelationshipTypeSchemaCreate(BaseModel):
     emoji: Optional[str] = "🔗"
     color: Optional[str] = None
     fields: Optional[List[FieldDefinition]] = None
+    is_bidirectional: Optional[bool] = False
 
 
 class RelationshipTypeSchemaUpdate(BaseModel):
@@ -285,6 +288,7 @@ class RelationshipTypeSchemaUpdate(BaseModel):
     emoji: Optional[str] = None
     color: Optional[str] = None
     fields: Optional[List[FieldDefinition]] = None
+    is_bidirectional: Optional[bool] = None
 
 
 class RelationshipTypeSchemaOut(BaseModel):
@@ -296,6 +300,7 @@ class RelationshipTypeSchemaOut(BaseModel):
     emoji: Optional[str] = None
     color: Optional[str] = None
     fields: Optional[List[FieldDefinition]] = None
+    is_bidirectional: bool
     is_builtin: bool
     created_at: datetime
 
@@ -313,3 +318,57 @@ class DbConfigOut(BaseModel):
 
 class DbConfigUpdate(BaseModel):
     database_url: str    # full URL; empty = reset to SQLite default
+
+
+# ── Entity Groups ──────────────────────────────────────────────────────────────
+
+class EntityGroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    entity_ids: Optional[List[str]] = None
+
+
+class EntityGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    entity_ids: Optional[List[str]] = None
+
+
+class EntityGroupOut(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    entity_ids: List[str]
+    is_published: bool = False
+    is_imported: bool = False
+    source_published_group_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Open Search / Published Groups ─────────────────────────────────────────────
+
+class PublishedEntityOut(BaseModel):
+    id: str                          # original entity id
+    published_entity_id: Optional[str] = None  # PublishedEntity.id (for import by entity)
+    type: str
+    value: str
+    metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+    is_masked: bool = False   # True when entity is not published
+
+
+class PublishedGroupOut(BaseModel):
+    id: str
+    group_id: str
+    group_name: str
+    group_description: Optional[str] = None
+    publisher_username: str
+    published_at: datetime
+    entities: List[PublishedEntityOut]
+
+    class Config:
+        from_attributes = True

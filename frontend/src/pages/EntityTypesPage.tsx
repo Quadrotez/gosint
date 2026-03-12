@@ -180,7 +180,7 @@ export default function EntityTypesPage() {
                   value={name}
                   onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                   placeholder={t.etm_name_placeholder}
-                  className="w-full px-3 py-2.5 rounded-lg font-mono text-sm placeholder-[#4a5568] outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg font-mono text-sm placeholder-[var(--text-muted)] outline-none"
                   style={{ ...inputStyle, borderColor: errors.name ? '#ff4444' : 'var(--border-light)' }}
                 />
                 {errors.name && <p className="text-[#ff4444] text-[10px] font-mono mt-1">{errors.name}</p>}

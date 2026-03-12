@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getEntities, getEntityGraph, updateRelationship } from '../api';
+import { getEntities, getEntityGraph, updateRelationship, getRelationshipTypeSchemas } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { useLang } from '../i18n/LangProvider';
@@ -49,6 +49,11 @@ export default function GraphExplorer() {
   const { data: entities = [] } = useQuery({
     queryKey: ['entities'],
     queryFn: () => getEntities({ limit: 500 }),
+  });
+
+  const { data: relTypeSchemas = [] } = useQuery({
+    queryKey: ['relationship-type-schemas'],
+    queryFn: getRelationshipTypeSchemas,
   });
 
   const { data: graphData, isLoading } = useQuery({
@@ -134,6 +139,7 @@ export default function GraphExplorer() {
             label: e.type,
             notes: (e as any).notes || '',
             hasNotes: !!((e as any).notes),
+            isBidirectional: !!(relTypeSchemas as any[]).find(r => r.name === e.type && r.is_bidirectional),
           },
         })),
       ],
@@ -220,6 +226,14 @@ export default function GraphExplorer() {
             'line-color': annotatedEdge,
             'target-arrow-color': annotatedEdge,
             'color': annotatedEdge,
+          } as any,
+        },
+        // ── Bidirectional edges ────────────────────────────────────
+        {
+          selector: 'edge[?isBidirectional]',
+          style: {
+            'source-arrow-shape': 'triangle',
+            'source-arrow-color': arrowColor,
           } as any,
         },
         {

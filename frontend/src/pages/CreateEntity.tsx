@@ -32,6 +32,12 @@ export default function CreateEntity() {
   const [personExtra, setPersonExtra] = useState<KVField[]>([]);
   const photoRef = useRef<HTMLInputElement>(null);
 
+  // Non-person photo/icon
+  const [entityPhoto, setEntityPhoto] = useState<string | null>(null);
+  const [entityCustomIcon, setEntityCustomIcon] = useState('');
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const entityPhotoRef = useRef<HTMLInputElement>(null);
+
   // Format date from YYYY-MM-DD to user's preferred locale for display
   const formatDob = (iso: string): string => {
     if (!iso) return '';
@@ -81,6 +87,9 @@ export default function CreateEntity() {
     setValue('');
     setMetaFields([]);
     setSchemaValues({});
+    setEntityPhoto(null);
+    setEntityCustomIcon('');
+    setShowIconPicker(false);
   };
 
   const handleSubmit = () => {
@@ -106,6 +115,8 @@ export default function CreateEntity() {
       metadata = Object.keys(m).length > 0 ? m : null;
     } else {
       const m: Record<string, unknown> = {};
+      if (entityPhoto) m.photo = entityPhoto;
+      if (entityCustomIcon) m.custom_icon = entityCustomIcon;
       if (schemaFields) {
         schemaFields.forEach(f => {
           if (f.field_type === 'entity') {
@@ -148,19 +159,19 @@ export default function CreateEntity() {
     <div className="p-8 max-w-2xl mx-auto">
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-[#4a5568] hover:text-[#7a8ba8] mb-6 font-mono text-sm transition-colors"
+        className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-muted)] mb-6 font-mono text-sm transition-colors"
       >
         <ArrowLeft size={14} /> {t.ep_back}
       </button>
 
-      <h1 className="text-2xl font-mono font-semibold text-[#e8edf5] mb-1">{t.ce_title}</h1>
-      <p className="text-sm text-[#4a5568] font-mono mb-8">{t.ce_subtitle}</p>
+      <h1 className="text-2xl font-mono font-semibold text-[var(--text-primary)] mb-1">{t.ce_title}</h1>
+      <p className="text-sm text-[var(--text-muted)] font-mono mb-8">{t.ce_subtitle}</p>
 
-      <div className="bg-[#111318] border border-[#1e2330] rounded-xl p-6 space-y-6">
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 space-y-6">
 
         {/* Type selector */}
         <div>
-          <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">{t.ce_type_label}</label>
+          <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-3 block">{t.ce_type_label}</label>
 
           {/* Built-in types */}
           <div className="grid grid-cols-5 gap-2 mb-2">
@@ -173,7 +184,7 @@ export default function CreateEntity() {
                   borderColor: getColor(ttype),
                   color: getColor(ttype),
                   backgroundColor: `${getColor(ttype)}15`,
-                } : { borderColor: '#262d3d', color: '#4a5568' }}
+                } : { borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}
               >
                 <span>{getIcon(ttype)}</span>
                 <span className="truncate w-full text-center leading-tight">{getLabel(ttype)}</span>
@@ -184,7 +195,7 @@ export default function CreateEntity() {
           {/* Custom types */}
           {customTypes.length > 0 && (
             <>
-              <div className="text-[10px] font-mono text-[#4a5568] uppercase tracking-widest my-2">
+              <div className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest my-2">
                 {lang === 'ru' ? 'Кастомные типы' : 'Custom types'}
               </div>
               <div className="grid grid-cols-5 gap-2">
@@ -200,7 +211,7 @@ export default function CreateEntity() {
                         borderColor: col,
                         color: col,
                         backgroundColor: `${col}15`,
-                      } : { borderColor: '#262d3d', color: '#4a5568' }}
+                      } : { borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}
                     >
                       <span>{schema.icon || '◆'}</span>
                       <span className="truncate w-full text-center leading-tight">{label}</span>
@@ -215,20 +226,20 @@ export default function CreateEntity() {
         {/* ── PERSON FORM ── */}
         {isPerson && (
           <div className="space-y-5">
-            <div className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest border-b border-[#1e2330] pb-2 flex items-center gap-2">
+            <div className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest border-b border-[var(--border)] pb-2 flex items-center gap-2">
               <User size={12} /> {t.ce_person_title}
             </div>
-            <p className="text-[11px] font-mono text-[#4a5568]">
+            <p className="text-[11px] font-mono text-[var(--text-muted)]">
               {lang === 'ru' ? 'Все поля необязательны' : 'All fields are optional'}
             </p>
 
             {/* Photo */}
             <div>
-              <label className="text-xs font-mono text-[#4a5568] mb-2 block">{t.ce_person_photo}</label>
+              <label className="text-xs font-mono text-[var(--text-muted)] mb-2 block">{t.ce_person_photo}</label>
               <div className="flex items-center gap-4">
                 <div
                   onClick={() => photoRef.current?.click()}
-                  className="w-20 h-20 rounded-xl border-2 border-dashed border-[#262d3d] hover:border-[#00d4ff60] flex items-center justify-center cursor-pointer transition-colors overflow-hidden bg-[#181c24] relative group"
+                  className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--border-light)] hover:border-[#00d4ff60] flex items-center justify-center cursor-pointer transition-colors overflow-hidden bg-[var(--bg-secondary)] relative group"
                 >
                   {photo ? (
                     <>
@@ -238,7 +249,7 @@ export default function CreateEntity() {
                       </div>
                     </>
                   ) : (
-                    <Camera size={20} className="text-[#4a5568] group-hover:text-[#00d4ff] transition-colors" />
+                    <Camera size={20} className="text-[var(--text-muted)] group-hover:text-[#00d4ff] transition-colors" />
                   )}
                 </div>
                 <div>
@@ -246,7 +257,7 @@ export default function CreateEntity() {
                     {t.ce_person_photo_hint}
                   </button>
                   {photo && (
-                    <button onClick={() => setPhoto(null)} className="text-xs font-mono text-[#4a5568] hover:text-[#ff4444]">
+                    <button onClick={() => setPhoto(null)} className="text-xs font-mono text-[var(--text-muted)] hover:text-[#ff4444]">
                       {t.ep_person_photo_remove}
                     </button>
                   )}
@@ -264,12 +275,12 @@ export default function CreateEntity() {
                 { label: t.ce_person_middle, ph: t.ce_person_middle_ph, val: middleName, set: setMiddleName },
               ].map(({ label, ph, val, set }) => (
                 <div key={label}>
-                  <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">{label}</label>
+                  <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">{label}</label>
                   <input
                     value={val}
                     onChange={e => set(e.target.value)}
                     placeholder={ph}
-                    className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                    className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                   />
                 </div>
               ))}
@@ -277,14 +288,14 @@ export default function CreateEntity() {
 
             {/* DOB — custom locale-aware 3-part date input */}
             <div className="w-full max-w-xs">
-              <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">{t.ce_person_dob}</label>
+              <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">{t.ce_person_dob}</label>
               <DatePicker value={dob} onChange={setDob} dateLocale={dateLocale} />
             </div>
 
             {/* Schema-defined extra fields for person (custom fields added in EntityTypesPage) */}
             {schemaFields && schemaFields.filter(f => !['last_name','first_name','middle_name','dob','photo'].includes(f.name)).length > 0 && (
               <div className="space-y-3">
-                <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest block">
+                <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest block">
                   {lang === 'ru' ? 'Дополнительные поля' : 'Extra Fields'}
                 </label>
                 {schemaFields.filter(f => !['last_name','first_name','middle_name','dob','photo'].includes(f.name)).map((f: FieldDefinition) => {
@@ -311,7 +322,7 @@ export default function CreateEntity() {
                   }
                   return (
                     <div key={f.name}>
-                      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+                      <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
                         {label}{f.required && <span className="text-[#ff4444] ml-1">*</span>}
                       </label>
                       {f.field_type === 'date' ? (
@@ -322,7 +333,7 @@ export default function CreateEntity() {
                           value={schemaValues[f.name] || ''}
                           onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
                           placeholder={f.name}
-                          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                         />
                       )}
                     </div>
@@ -334,7 +345,7 @@ export default function CreateEntity() {
             {/* Extra fields */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-mono text-[#4a5568]">{t.ce_person_custom}</label>
+                <label className="text-xs font-mono text-[var(--text-muted)]">{t.ce_person_custom}</label>
                 <button
                   onClick={() => setPersonExtra(f => [...f, { key: '', value: '' }])}
                   className="text-xs font-mono text-[#00d4ff] hover:underline flex items-center gap-1"
@@ -348,15 +359,15 @@ export default function CreateEntity() {
                     value={cf.key}
                     onChange={e => setPersonExtra(f => f.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x))}
                     placeholder={t.ce_person_field_name}
-                    className="w-36 px-3 py-2 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                    className="w-36 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                   />
                   <input
                     value={cf.value}
                     onChange={e => setPersonExtra(f => f.map((x, idx) => idx === i ? { ...x, value: e.target.value } : x))}
                     placeholder={t.ce_person_field_value}
-                    className="flex-1 px-3 py-2 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                    className="flex-1 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                   />
-                  <button onClick={() => setPersonExtra(f => f.filter((_, idx) => idx !== i))} className="text-[#4a5568] hover:text-[#ff4444] p-1">
+                  <button onClick={() => setPersonExtra(f => f.filter((_, idx) => idx !== i))} className="text-[var(--text-muted)] hover:text-[#ff4444] p-1">
                     <X size={14} />
                   </button>
                 </div>
@@ -365,14 +376,14 @@ export default function CreateEntity() {
 
             {/* Preview */}
             <div className="rounded-lg p-3 font-mono text-xs border" style={{ borderColor: `${color}30`, backgroundColor: `${color}08` }}>
-              <span className="text-[#4a5568]">{t.ce_preview} </span>
+              <span className="text-[var(--text-muted)]">{t.ce_preview} </span>
               <span style={{ color }}>{getLabel(type)}</span>
               {fullName ? (
-                <span className="text-[#e8edf5] ml-2">{fullName}</span>
+                <span className="text-[var(--text-primary)] ml-2">{fullName}</span>
               ) : (
-                <span className="text-[#4a5568] ml-2 italic">{lang === 'ru' ? 'Неизвестная персона' : 'Unknown Person'}</span>
+                <span className="text-[var(--text-muted)] ml-2 italic">{lang === 'ru' ? 'Неизвестная персона' : 'Unknown Person'}</span>
               )}
-              {dob && <span className="text-[#4a5568] ml-2">· {formatDob(dob)}</span>}
+              {dob && <span className="text-[var(--text-muted)] ml-2">· {formatDob(dob)}</span>}
             </div>
           </div>
         )}
@@ -380,8 +391,86 @@ export default function CreateEntity() {
         {/* ── NON-PERSON FORM (unified for builtin + custom, with schema or preset fields) ── */}
         {!isPerson && (
           <div className="space-y-4">
+            {/* Photo / icon block */}
+            <div className="flex items-start gap-4 pb-2">
+              {/* Photo upload */}
+              <div>
+                <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
+                  {lang === 'ru' ? 'Фото' : 'Photo'}
+                </label>
+                <div
+                  className="relative w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer group"
+                  style={{ background: `${color}18`, border: `1px solid ${color}40` }}
+                  onClick={() => entityPhotoRef.current?.click()}
+                >
+                  {entityPhoto ? (
+                    <img src={entityPhoto} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-2xl">{entityCustomIcon || schemas.find(s => s.name === type)?.icon || '🔍'}</span>
+                  )}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera size={14} className="text-white" />
+                  </div>
+                  <input
+                    ref={entityPhotoRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => setEntityPhoto(ev.target?.result as string);
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </div>
+                {entityPhoto && (
+                  <button
+                    onClick={() => setEntityPhoto(null)}
+                    className="text-xs font-mono mt-1 hover:text-[#ff4444] transition-colors"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    ✕ {lang === 'ru' ? 'Убрать' : 'Remove'}
+                  </button>
+                )}
+              </div>
+
+              {/* Custom emoji icon (when no photo) */}
+              {!entityPhoto && (
+                <div className="flex-1">
+                  <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
+                    {lang === 'ru' ? 'Иконка (эмодзи)' : 'Icon (emoji)'}
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {['👤','🏢','📱','🌐','💻','🔑','📁','🚗','💰','🔒','⭐','🎯','📡','🕵️','🏦'].map(ico => (
+                      <button
+                        key={ico}
+                        type="button"
+                        onClick={() => setEntityCustomIcon(entityCustomIcon === ico ? '' : ico)}
+                        className="w-8 h-8 rounded flex items-center justify-center text-base transition-all"
+                        style={{
+                          background: entityCustomIcon === ico ? 'var(--accent-dim)' : 'var(--bg-secondary)',
+                          border: `1px solid ${entityCustomIcon === ico ? 'var(--accent)' : 'var(--border-light)'}`,
+                        }}
+                      >
+                        {ico}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    value={entityCustomIcon}
+                    onChange={e => setEntityCustomIcon(e.target.value)}
+                    placeholder={lang === 'ru' ? 'или введите свой эмодзи...' : 'or type custom emoji...'}
+                    className="w-full px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
+                    maxLength={4}
+                  />
+                </div>
+              )}
+            </div>
+
             <div>
-              <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-2 block">
+              <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 block">
                 {t.ce_value_label} <span className="text-[#ff4444]">*</span>
               </label>
               <input
@@ -389,7 +478,7 @@ export default function CreateEntity() {
                 onChange={e => setValue(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder={`Enter ${getLabel(type)}...`}
-                className="w-full px-4 py-3 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                 style={{ borderColor: value ? `${color}60` : '' }}
               />
             </div>
@@ -397,7 +486,7 @@ export default function CreateEntity() {
             {/* Schema-defined fields (includes edited builtins) */}
             {schemaFields && schemaFields.length > 0 && (
               <div>
-                <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">
+                <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-3 block">
                   {lang === 'ru' ? 'Поля' : 'Fields'}
                 </label>
                 <div className="space-y-3">
@@ -429,7 +518,7 @@ export default function CreateEntity() {
                     }
                     return (
                       <div key={f.name}>
-                        <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+                        <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
                           {label}{f.required && <span className="text-[#ff4444] ml-1">*</span>}
                         </label>
                         {f.field_type === 'date' ? (
@@ -440,7 +529,7 @@ export default function CreateEntity() {
                             value={schemaValues[f.name] || ''}
                             onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
                             placeholder={f.name}
-                            className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                            className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                           />
                         )}
                       </div>
@@ -453,7 +542,7 @@ export default function CreateEntity() {
             {/* Preset fields (unedited builtins) */}
             {presetFields && presetFields.length > 0 && (
               <div>
-                <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest mb-3 block">
+                <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-3 block">
                   {lang === 'ru' ? 'Поля' : 'Fields'}
                 </label>
                 <div className="space-y-3">
@@ -461,7 +550,7 @@ export default function CreateEntity() {
                     const label = lang === 'ru' ? f.label_ru : f.label_en;
                     return (
                       <div key={f.key}>
-                        <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">{label}</label>
+                        <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">{label}</label>
                         {f.type === 'date' ? (
                           <DatePicker value={schemaValues[f.key] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.key]: v }))} dateLocale={dateLocale} />
                         ) : (
@@ -470,7 +559,7 @@ export default function CreateEntity() {
                             value={schemaValues[f.key] || ''}
                             onChange={e => setSchemaValues(prev => ({ ...prev, [f.key]: e.target.value }))}
                             placeholder={label}
-                            className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+                            className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                           />
                         )}
                       </div>
@@ -484,9 +573,9 @@ export default function CreateEntity() {
 
             {value && (
               <div className="rounded-lg p-3 font-mono text-xs border" style={{ borderColor: `${color}30`, backgroundColor: `${color}08` }}>
-                <span className="text-[#4a5568]">{t.ce_preview} </span>
+                <span className="text-[var(--text-muted)]">{t.ce_preview} </span>
                 <span style={{ color }}>{getLabel(type)}</span>
-                <span className="text-[#e8edf5] ml-2">{value}</span>
+                <span className="text-[var(--text-primary)] ml-2">{value}</span>
               </div>
             )}
           </div>
@@ -495,7 +584,7 @@ export default function CreateEntity() {
         <button
           onClick={handleSubmit}
           disabled={!canSubmit || mutation.isPending}
-          className="w-full py-3 bg-[#00d4ff] text-[#0a0c0f] font-mono text-sm font-semibold rounded-lg hover:bg-[#00b8e0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="w-full py-3 bg-[var(--accent)] text-[#ffffff] font-mono text-sm font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {mutation.isPending ? t.ce_submitting : t.ce_submit}
         </button>
@@ -518,7 +607,7 @@ function MetaFieldsEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-mono text-[#7a8ba8] uppercase tracking-widest">
+        <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest">
           {lang === 'ru' ? 'Метаданные' : 'Metadata'}
         </label>
         <button
@@ -529,7 +618,7 @@ function MetaFieldsEditor({
         </button>
       </div>
       {fields.length === 0 && (
-        <p className="text-xs font-mono text-[#4a5568]">{lang === 'ru' ? 'Нет полей' : 'No fields'}</p>
+        <p className="text-xs font-mono text-[var(--text-muted)]">{lang === 'ru' ? 'Нет полей' : 'No fields'}</p>
       )}
       {fields.map((cf, i) => (
         <div key={i} className="flex items-center gap-2 mb-2">
@@ -537,15 +626,15 @@ function MetaFieldsEditor({
             value={cf.key}
             onChange={e => onChange(fields.map((x, idx) => idx === i ? { ...x, key: e.target.value } : x))}
             placeholder={lang === 'ru' ? 'ключ' : 'key'}
-            className="w-36 px-3 py-2 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+            className="w-36 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
           />
           <input
             value={cf.value}
             onChange={e => onChange(fields.map((x, idx) => idx === i ? { ...x, value: e.target.value } : x))}
             placeholder={lang === 'ru' ? 'значение' : 'value'}
-            className="flex-1 px-3 py-2 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+            className="flex-1 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
           />
-          <button onClick={() => onChange(fields.filter((_, idx) => idx !== i))} className="text-[#4a5568] hover:text-[#ff4444] p-1">
+          <button onClick={() => onChange(fields.filter((_, idx) => idx !== i))} className="text-[var(--text-muted)] hover:text-[#ff4444] p-1">
             <X size={14} />
           </button>
         </div>
@@ -599,34 +688,34 @@ function EntityFieldPicker({
 
   return (
     <div>
-      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+      <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
         {label}{required && <span className="text-[#ff4444] ml-1">*</span>}
         <span className="ml-1 text-[#3a4460]">· entity</span>
       </label>
       <div className="relative">
         <div
           onClick={() => setOpen(v => !v)}
-          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-[#e8edf5] cursor-pointer flex items-center justify-between hover:border-[#3a4460]"
+          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] cursor-pointer flex items-center justify-between hover:border-[var(--border-hover)]"
         >
           {selectedEntity ? (
             <span className="flex items-center gap-2">
-              <span className="text-[#4a5568] text-xs">[{getTypeLabel(selectedEntity.type)}]</span>
+              <span className="text-[var(--text-muted)] text-xs">[{getTypeLabel(selectedEntity.type)}]</span>
               {getEntityLabel(selectedEntity)}
             </span>
           ) : (
-            <span className="text-[#4a5568]">{lang === 'ru' ? 'Выбрать сущность...' : 'Select entity...'}</span>
+            <span className="text-[var(--text-muted)]">{lang === 'ru' ? 'Выбрать сущность...' : 'Select entity...'}</span>
           )}
-          <Search size={12} className="text-[#4a5568]" />
+          <Search size={12} className="text-[var(--text-muted)]" />
         </div>
         {open && (
-          <div className="absolute z-30 mt-1 w-full bg-[#181c24] border border-[#262d3d] rounded-lg shadow-xl overflow-hidden">
-            <div className="p-2 border-b border-[#262d3d]">
+          <div className="absolute z-30 mt-1 w-full bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg shadow-xl overflow-hidden">
+            <div className="p-2 border-b border-[var(--border-light)]">
               <input
                 autoFocus
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
-                className="w-full px-2 py-1.5 bg-[#0d1017] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] outline-none"
+                className="w-full px-2 py-1.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
               />
             </div>
             <div className="max-h-52 overflow-y-auto">
@@ -640,15 +729,15 @@ function EntityFieldPicker({
                 <button
                   key={e.id}
                   onClick={() => { onChange(e.id); setOpen(false); setSearch(''); }}
-                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[#1e2330] flex items-center gap-2"
+                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
                   style={{ color: e.id === value ? 'var(--accent)' : '#e8edf5' }}
                 >
-                  <span className="text-[#4a5568] text-[10px]">[{getTypeLabel(e.type)}]</span>
+                  <span className="text-[var(--text-muted)] text-[10px]">[{getTypeLabel(e.type)}]</span>
                   {getEntityLabel(e)}
                 </button>
               ))}
               {filtered.length === 0 && (
-                <p className="px-3 py-2 font-mono text-xs text-[#4a5568]">
+                <p className="px-3 py-2 font-mono text-xs text-[var(--text-muted)]">
                   {lang === 'ru' ? 'Не найдено' : 'No results'}
                 </p>
               )}
@@ -708,7 +797,7 @@ function EntitiesFieldPicker({
 
   return (
     <div>
-      <label className="text-xs font-mono text-[#4a5568] mb-1.5 block">
+      <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
         {label}{required && <span className="text-[#ff4444] ml-1">*</span>}
         <span className="ml-1 text-[#3a4460]">· entities</span>
       </label>
@@ -718,9 +807,9 @@ function EntitiesFieldPicker({
             const e = entities.find(x => x.id === id);
             if (!e) return null;
             return (
-              <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-[#1e2330] rounded font-mono text-xs text-[#e8edf5]">
+              <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-[var(--border)] rounded font-mono text-xs text-[var(--text-primary)]">
                 {getEntityLabel(e)}
-                <button onClick={() => toggle(id)} className="text-[#4a5568] hover:text-[#ff4444] ml-1">×</button>
+                <button onClick={() => toggle(id)} className="text-[var(--text-muted)] hover:text-[#ff4444] ml-1">×</button>
               </span>
             );
           })}
@@ -729,20 +818,20 @@ function EntitiesFieldPicker({
       <div className="relative">
         <button
           onClick={() => setOpen(v => !v)}
-          className="w-full px-3 py-2.5 bg-[#181c24] border border-[#262d3d] rounded-lg font-mono text-sm text-left flex items-center justify-between hover:border-[#3a4460]"
+          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-left flex items-center justify-between hover:border-[var(--border-hover)]"
         >
-          <span className="text-[#4a5568]">{lang === 'ru' ? '+ Добавить сущности...' : '+ Add entities...'}</span>
-          <Search size={12} className="text-[#4a5568]" />
+          <span className="text-[var(--text-muted)]">{lang === 'ru' ? '+ Добавить сущности...' : '+ Add entities...'}</span>
+          <Search size={12} className="text-[var(--text-muted)]" />
         </button>
         {open && (
-          <div className="absolute z-30 mt-1 w-full bg-[#181c24] border border-[#262d3d] rounded-lg shadow-xl overflow-hidden">
-            <div className="p-2 border-b border-[#262d3d]">
+          <div className="absolute z-30 mt-1 w-full bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg shadow-xl overflow-hidden">
+            <div className="p-2 border-b border-[var(--border-light)]">
               <input
                 autoFocus
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
-                className="w-full px-2 py-1.5 bg-[#0d1017] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] outline-none"
+                className="w-full px-2 py-1.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
               />
             </div>
             <div className="max-h-52 overflow-y-auto">
@@ -750,22 +839,22 @@ function EntitiesFieldPicker({
                 <button
                   key={e.id}
                   onClick={() => { toggle(e.id); setSearch(''); }}
-                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[#1e2330] flex items-center gap-2"
-                  style={{ color: selectedIds.includes(e.id) ? '#00d4ff' : '#e8edf5' }}
+                  className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
+                  style={{ color: selectedIds.includes(e.id) ? 'var(--accent)' : 'var(--text-primary)' }}
                 >
                   {selectedIds.includes(e.id) && <span className="text-[#00d4ff]">✓</span>}
-                  <span className="text-[#4a5568] text-[10px]">[{getTypeLabel(e.type)}]</span>
+                  <span className="text-[var(--text-muted)] text-[10px]">[{getTypeLabel(e.type)}]</span>
                   {getEntityLabel(e)}
                 </button>
               ))}
               {filtered.length === 0 && (
-                <p className="px-3 py-2 font-mono text-xs text-[#4a5568]">
+                <p className="px-3 py-2 font-mono text-xs text-[var(--text-muted)]">
                   {lang === 'ru' ? 'Не найдено' : 'No results'}
                 </p>
               )}
             </div>
-            <div className="p-2 border-t border-[#262d3d]">
-              <button onClick={() => setOpen(false)} className="w-full text-xs font-mono text-[#4a5568] hover:text-[#e8edf5]">
+            <div className="p-2 border-t border-[var(--border-light)]">
+              <button onClick={() => setOpen(false)} className="w-full text-xs font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)]">
                 {lang === 'ru' ? 'Закрыть' : 'Close'}
               </button>
             </div>

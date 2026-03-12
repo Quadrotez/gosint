@@ -55,7 +55,7 @@ export default function MetadataEditor({ value, onChange, editable = true }: Pro
             <span className="text-[10px] font-mono text-[#7a8ba8] uppercase tracking-widest">{LABEL}</span>
             <button
               onClick={() => setEditing(true)}
-              className="flex items-center gap-1 text-xs font-mono text-[#4a5568] hover:text-[#00d4ff] transition-colors"
+              className="flex items-center gap-1 text-xs font-mono text-[var(--text-muted)] hover:text-[#00d4ff] transition-colors"
             >
               <Edit2 size={11} /> {EDIT}
             </button>
@@ -65,13 +65,13 @@ export default function MetadataEditor({ value, onChange, editable = true }: Pro
           <div className="space-y-1.5">
             {displayRows.map(({ key, val }) => (
               <div key={key} className="flex gap-3 items-baseline">
-                <span className="text-[11px] font-mono text-[#4a5568] w-32 flex-shrink-0 truncate">{key}</span>
-                <span className="text-xs font-mono text-[#e8edf5] break-all">{val}</span>
+                <span className="text-[11px] font-mono text-[var(--text-muted)] w-32 flex-shrink-0 truncate">{key}</span>
+                <span className="text-xs font-mono text-[var(--text-primary)] break-all">{val}</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-xs font-mono text-[#4a5568]">{EMPTY}</p>
+          <p className="text-xs font-mono text-[var(--text-muted)]">{EMPTY}</p>
         )}
       </div>
     );
@@ -85,7 +85,7 @@ export default function MetadataEditor({ value, onChange, editable = true }: Pro
           <button onClick={save} className="flex items-center gap-1 text-xs font-mono text-[#00d4ff] hover:text-[#00b8e0] transition-colors">
             <Check size={11} /> {SAVE}
           </button>
-          <button onClick={cancel} className="text-xs font-mono text-[#4a5568] hover:text-[#7a8ba8] transition-colors">
+          <button onClick={cancel} className="text-xs font-mono text-[var(--text-muted)] hover:text-[#7a8ba8] transition-colors">
             {CANCEL}
           </button>
         </div>
@@ -97,16 +97,16 @@ export default function MetadataEditor({ value, onChange, editable = true }: Pro
               value={row.key}
               onChange={e => updateRow(i, 'key', e.target.value)}
               placeholder={lang === 'ru' ? 'ключ' : 'key'}
-              className="w-32 px-2.5 py-1.5 bg-[#181c24] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460] flex-shrink-0"
+              className="w-32 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#3a4460] flex-shrink-0"
             />
-            <span className="text-[#4a5568] font-mono text-xs">:</span>
+            <span className="text-[var(--text-muted)] font-mono text-xs">:</span>
             <input
               value={row.val}
               onChange={e => updateRow(i, 'val', e.target.value)}
               placeholder={lang === 'ru' ? 'значение' : 'value'}
-              className="flex-1 px-2.5 py-1.5 bg-[#181c24] border border-[#262d3d] rounded font-mono text-xs text-[#e8edf5] placeholder-[#4a5568] outline-none focus:border-[#3a4460]"
+              className="flex-1 px-2.5 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#3a4460]"
             />
-            <button onClick={() => removeRow(i)} className="text-[#4a5568] hover:text-[#ff4444] transition-colors p-1 flex-shrink-0">
+            <button onClick={() => removeRow(i)} className="text-[var(--text-muted)] hover:text-[#ff4444] transition-colors p-1 flex-shrink-0">
               <X size={13} />
             </button>
           </div>

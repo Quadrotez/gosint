@@ -21,6 +21,8 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
+import EntityGroupsPage from './pages/EntityGroupsPage';
+import OpenSearchPage from './pages/OpenSearchPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -68,6 +70,8 @@ function AppInner() {
                       <Route path="/relationship-types" element={<RelationshipTypesPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
+                      <Route path="/entity-groups" element={<EntityGroupsPage />} />
+                      <Route path="/open-search" element={<OpenSearchPage />} />
                       <Route path="/admin" element={
                         <AdminRoute><AdminPage /></AdminRoute>
                       } />

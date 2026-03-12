@@ -9,6 +9,10 @@ def _uuid():
     return str(uuid.uuid4())
 
 
+def _uuid():
+    return str(uuid.uuid4())
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=_uuid)
@@ -40,6 +44,7 @@ class SiteSettings(Base):
     registration_enabled = Column(Boolean, default=True)
     max_accounts_per_ip = Column(Integer, default=3)
     database_url = Column(Text, nullable=True)   # pending DB URL (applied on restart)
+    open_search_enabled = Column(Boolean, default=True, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -69,6 +74,8 @@ class Entity(Base):
     notes = Column(Text, nullable=True)
     canvas_layout = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # If set — this entity was imported as part of an imported group
+    imported_from_group_id = Column(String, nullable=True, index=True)
     owner = relationship("User", back_populates="entities")
     attachments = relationship("EntityAttachment", back_populates="entity", cascade="all, delete-orphan")
     source_relationships = relationship(
@@ -124,6 +131,49 @@ class RelationshipTypeSchema(Base):
     emoji = Column(String(8), nullable=True, default="🔗")
     color = Column(String(16), nullable=True)
     fields = Column(Text, nullable=True)       # JSON array of FieldDefinition
+    is_bidirectional = Column(Boolean, default=False, nullable=False)
     is_builtin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="relationship_type_schemas")
+
+
+class EntityGroup(Base):
+    """Named group of entities that can be shared via Open Search."""
+    __tablename__ = "entity_groups"
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    entity_ids = Column(Text, nullable=True)   # JSON array of entity IDs
+    # Import tracking
+    is_imported = Column(Boolean, default=False, nullable=False)
+    source_published_group_id = Column(String, nullable=True)   # PublishedGroup.id this was imported from
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    owner = relationship("User", backref="entity_groups")
+    publications = relationship("PublishedGroup", back_populates="group", cascade="all, delete-orphan")
+
+
+class PublishedGroup(Base):
+    """A group that has been published to Open Search (visible to all users)."""
+    __tablename__ = "published_groups"
+    id = Column(String, primary_key=True, default=_uuid)
+    group_id = Column(String, ForeignKey("entity_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    publisher_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    published_at = Column(DateTime, default=datetime.utcnow)
+    group = relationship("EntityGroup", back_populates="publications")
+    publisher = relationship("User", backref="published_groups")
+    published_entities = relationship("PublishedEntity", back_populates="published_group", cascade="all, delete-orphan")
+
+
+class PublishedEntity(Base):
+    """Plaintext snapshot of an entity at publication time, stored per-published-group."""
+    __tablename__ = "published_entities"
+    id = Column(String, primary_key=True, default=_uuid)
+    published_group_id = Column(String, ForeignKey("published_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    original_entity_id = Column(String, nullable=False, index=True)  # refers to entities.id
+    type = Column(String, nullable=False)
+    value = Column(String, nullable=False)
+    metadata_ = Column("metadata", Text, nullable=True)   # plaintext JSON
+    notes = Column(Text, nullable=True)                   # plaintext
+    published_group = relationship("PublishedGroup", back_populates="published_entities")

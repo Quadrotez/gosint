@@ -146,14 +146,14 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const inputCls = 'bg-[#181c24] border border-[#262d3d] rounded font-mono text-sm text-[#e8edf5] outline-none focus:border-[#00d4ff60] text-center px-1 py-1.5 transition-colors';
+  const inputCls = 'bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[#00d4ff60] text-center px-1 py-1.5 transition-colors';
 
   const renderInputs = () => {
     const yInput = <input key="y" value={y} onChange={e => handleY(e.target.value)} placeholder={lang === 'ru' ? 'ГГГГ' : 'YYYY'} className={inputCls} style={{ width: '54px' }} maxLength={4} />;
     const mInput = <input key="m" value={m} onChange={e => handleM(e.target.value)} placeholder={lang === 'ru' ? 'ММ' : 'MM'} className={inputCls} style={{ width: '40px' }} maxLength={2} />;
     const dInput = <input key="d" value={d} onChange={e => handleD(e.target.value)} placeholder={lang === 'ru' ? 'ДД' : 'DD'} className={inputCls} style={{ width: '40px' }} maxLength={2} />;
-    const sep1 = <span key="s1" className="text-[#4a5568] font-mono select-none">{dateLocale === 'ymd' ? '-' : dateLocale === 'mdy' ? '/' : '.'}</span>;
-    const sep2 = <span key="s2" className="text-[#4a5568] font-mono select-none">{dateLocale === 'ymd' ? '-' : dateLocale === 'mdy' ? '/' : '.'}</span>;
+    const sep1 = <span key="s1" className="text-[var(--text-muted)] font-mono select-none">{dateLocale === 'ymd' ? '-' : dateLocale === 'mdy' ? '/' : '.'}</span>;
+    const sep2 = <span key="s2" className="text-[var(--text-muted)] font-mono select-none">{dateLocale === 'ymd' ? '-' : dateLocale === 'mdy' ? '/' : '.'}</span>;
     if (dateLocale === 'mdy') return [mInput, sep1, dInput, sep2, yInput];
     if (dateLocale === 'ymd') return [yInput, sep1, mInput, sep2, dInput];
     return [dInput, sep1, mInput, sep2, yInput]; // dmy default
@@ -168,8 +168,8 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
           type="button"
           onClick={() => setOpen(v => !v)}
           title={lang === 'ru' ? 'Открыть календарь' : 'Open calendar'}
-          className="ml-1 p-1.5 rounded border border-[#262d3d] hover:border-[#3a4460] transition-colors"
-          style={{ background: '#181c24', color: open ? '#00d4ff' : '#4a5568' }}
+          className="ml-1 p-1.5 rounded border border-[var(--border-light)] hover:border-[#3a4460] transition-colors"
+          style={{ background: 'var(--bg-secondary)', color: open ? 'var(--accent)' : 'var(--text-muted)' }}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="2" y="3" width="12" height="11" rx="1.5" />
@@ -177,7 +177,7 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
           </svg>
         </button>
         {(y || m || d) && (
-          <button type="button" onClick={clear} className="p-1 text-[#4a5568] hover:text-[#ff4444] transition-colors">
+          <button type="button" onClick={clear} className="p-1 text-[var(--text-muted)] hover:text-[#ff4444] transition-colors">
             <X size={12} />
           </button>
         )}
@@ -188,22 +188,22 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
         <div
           className="absolute z-50 mt-2 rounded-xl shadow-2xl border"
           style={{
-            background: '#111318',
-            borderColor: '#1e2330',
+            background: 'var(--bg-card)',
+            borderColor: 'var(--border)',
             width: '240px',
             top: '100%',
             left: 0,
           }}
         >
           {/* Header: month/year nav */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: '#1e2330' }}>
-            <button onClick={prevMonth} className="p-1 rounded hover:bg-[#1e2330] text-[#7a8ba8] hover:text-[#e8edf5] transition-colors">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--border)' }}>
+            <button onClick={prevMonth} className="p-1 rounded hover:bg-[var(--border)] text-[#7a8ba8] hover:text-[var(--text-primary)] transition-colors">
               <ChevronLeft size={14} />
             </button>
-            <span className="font-mono text-xs text-[#e8edf5] font-semibold tracking-wide">
+            <span className="font-mono text-xs text-[var(--text-primary)] font-semibold tracking-wide">
               {monthNames[calMonth]} {calYear}
             </span>
-            <button onClick={nextMonth} className="p-1 rounded hover:bg-[#1e2330] text-[#7a8ba8] hover:text-[#e8edf5] transition-colors">
+            <button onClick={nextMonth} className="p-1 rounded hover:bg-[var(--border)] text-[#7a8ba8] hover:text-[var(--text-primary)] transition-colors">
               <ChevronRight size={14} />
             </button>
           </div>
@@ -211,7 +211,7 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
           {/* Day headers */}
           <div className="grid grid-cols-7 px-2 pt-2">
             {dayNames.map(n => (
-              <div key={n} className="text-center font-mono text-[9px] pb-1.5" style={{ color: '#3a4460' }}>{n}</div>
+              <div key={n} className="text-center font-mono text-[9px] pb-1.5" style={{ color: 'var(--text-muted)' }}>{n}</div>
             ))}
           </div>
 
@@ -227,8 +227,8 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
                   onClick={() => pickDay(day)}
                   className="w-7 h-7 mx-auto flex items-center justify-center rounded font-mono text-xs transition-all"
                   style={{
-                    background: sel ? '#00d4ff' : tod ? '#1e2330' : 'transparent',
-                    color: sel ? '#0a0c0f' : tod ? '#00d4ff' : '#e8edf5',
+                    background: sel ? 'var(--accent)' : tod ? 'var(--border)' : 'transparent',
+                    color: sel ? '#fff' : tod ? 'var(--accent)' : 'var(--text-primary)',
                     fontWeight: sel || tod ? 700 : 400,
                   }}
                 >
@@ -239,7 +239,7 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
           </div>
 
           {/* Quick: today */}
-          <div className="px-3 pb-2.5 pt-1 border-t" style={{ borderColor: '#1e2330' }}>
+          <div className="px-3 pb-2.5 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
             <button
               onClick={() => {
                 const t2 = new Date();
@@ -251,7 +251,7 @@ export default function DatePicker({ value, onChange, dateLocale, lang = 'ru', c
                 onChange(`${ty}-${tm}-${td}`);
                 setOpen(false);
               }}
-              className="w-full text-center font-mono text-[10px] py-1.5 rounded hover:bg-[#1e2330] transition-colors"
+              className="w-full text-center font-mono text-[10px] py-1.5 rounded hover:bg-[var(--border)] transition-colors"
               style={{ color: '#00d4ff' }}
             >
               {lang === 'ru' ? 'Сегодня' : 'Today'}

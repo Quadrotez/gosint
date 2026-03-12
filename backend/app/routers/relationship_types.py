@@ -68,6 +68,7 @@ def _schema_out(s: models.RelationshipTypeSchema) -> schemas.RelationshipTypeSch
         emoji=s.emoji,
         color=s.color,
         fields=[schemas.FieldDefinition(**f) for f in fields] if fields else None,
+        is_bidirectional=bool(s.is_bidirectional) if s.is_bidirectional is not None else False,
         is_builtin=s.is_builtin,
         created_at=s.created_at,
     )
@@ -110,6 +111,7 @@ def create_relationship_type(
         emoji=body.emoji or "🔗",
         color=body.color,
         fields=fields_json,
+        is_bidirectional=body.is_bidirectional or False,
         is_builtin=False,
         created_at=datetime.utcnow(),
     )
@@ -142,6 +144,8 @@ def update_relationship_type(
         row.color = body.color
     if body.fields is not None:
         row.fields = json.dumps([f.model_dump() for f in body.fields])
+    if body.is_bidirectional is not None:
+        row.is_bidirectional = body.is_bidirectional
     db.commit(); db.refresh(row)
     return _schema_out(row)
 
