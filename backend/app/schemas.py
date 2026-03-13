@@ -102,6 +102,10 @@ class FieldDefinition(BaseModel):
     label_ru: Optional[str] = None
     field_type: str = "text"
     required: bool = False
+    entity_type_filter: Optional[str] = None
+    is_relation: Optional[bool] = None
+    relation_type: Optional[str] = None
+    select_options: Optional[List[str]] = None
 
 
 class EntityTypeSchemaBase(BaseModel):

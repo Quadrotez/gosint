@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { createEntitySchema, deleteEntitySchema, updateEntitySchema } from '../api';
+import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
+import { createEntitySchema, deleteEntitySchema, updateEntitySchema, getRelationshipTypeSchemas } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
 import { BUILTIN_FIELD_PRESETS } from '../utils';
@@ -8,7 +8,20 @@ import type { FieldDefinition, EntityTypeSchemaCreate, EntityTypeSchemaUpdate, E
 import { Plus, X, Trash2, Check, Edit2, Shapes } from 'lucide-react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
-const FIELD_TYPES = ['text', 'date', 'url', 'number', 'entity', 'entities'] as const;
+const FIELD_TYPES = ['text', 'date', 'url', 'number', 'boolean', 'select', 'entity', 'entities'] as const;
+type FT = typeof FIELD_TYPES[number];
+
+const FIELD_TYPE_LABELS: Record<FT, { en: string; ru: string }> = {
+  text:     { en: 'Text',     ru: 'Текст' },
+  date:     { en: 'Date',     ru: 'Дата' },
+  url:      { en: 'URL',      ru: 'Ссылка' },
+  number:   { en: 'Number',   ru: 'Число' },
+  boolean:  { en: 'Boolean',  ru: 'Да/Нет' },
+  select:   { en: 'Select',   ru: 'Список' },
+  entity:   { en: 'Entity',   ru: 'Сущность' },
+  entities: { en: 'Entities', ru: 'Сущности' },
+};
+
 const PALETTE = [
   '#f43f5e','#ec4899','#a855f7','#6366f1','#3b82f6',
   '#06b6d4','#10b981','#84cc16','#eab308','#f97316',
@@ -17,7 +30,11 @@ const PALETTE = [
 
 interface FieldRow {
   name: string; label_en: string; label_ru: string;
-  field_type: 'text' | 'date' | 'url' | 'number' | 'entity'; required: boolean;
+  field_type: FT; required: boolean;
+  is_relation?: boolean;
+  relation_type?: string;
+  select_options?: string;  // newline-separated
+  entity_type_filter?: string;
 }
 function emptyField(): FieldRow {
   return { name: '', label_en: '', label_ru: '', field_type: 'text', required: false };
@@ -44,6 +61,11 @@ export default function EntityTypesPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const customSchemas = schemas.filter(s => !s.is_builtin);
+
+  const { data: relTypeSchemas = [] } = useQuery({
+    queryKey: ['relationship-type-schemas'],
+    queryFn: getRelationshipTypeSchemas,
+  });
 
   const createMutation = useMutation({
     mutationFn: createEntitySchema,
@@ -79,18 +101,20 @@ export default function EntityTypesPage() {
     setColor(schema.color || PALETTE[4]);
     setShowForm(true);
 
-    // If schema has saved fields, use those; if it's a builtin with no saved fields yet,
-    // pre-populate from BUILTIN_FIELD_PRESETS so the user can edit/remove them
     if (schema.fields && schema.fields.length > 0) {
       setFields(schema.fields.map(f => ({
         name: f.name, label_en: f.label_en, label_ru: f.label_ru || '',
-        field_type: f.field_type as any, required: f.required,
+        field_type: f.field_type as FT, required: f.required,
+        is_relation: f.is_relation || false,
+        relation_type: f.relation_type || '',
+        entity_type_filter: f.entity_type_filter || '',
+        select_options: (f.select_options || []).join('\n'),
       })));
     } else if (schema.is_builtin && BUILTIN_FIELD_PRESETS[schema.name]) {
       const preset = BUILTIN_FIELD_PRESETS[schema.name];
       setFields(preset.map(p => ({
         name: p.key, label_en: p.label_en, label_ru: p.label_ru,
-        field_type: p.type, required: false,
+        field_type: p.type as FT, required: false,
       })));
     } else {
       setFields([]);
@@ -109,11 +133,20 @@ export default function EntityTypesPage() {
   const handleSubmit = () => {
     const isEdit = !!editingSchema;
     if (!validate(isEdit)) return;
-    const fieldsList = fields.filter(f => f.name.trim()).map(f => ({
-      name: f.name.trim(), label_en: f.label_en.trim() || f.name,
-      label_ru: f.label_ru.trim() || undefined,
-      field_type: f.field_type, required: f.required,
-    } as FieldDefinition));
+    const fieldsList = fields.filter(f => f.name.trim()).map(f => {
+      const fd: FieldDefinition = {
+        name: f.name.trim(), label_en: f.label_en.trim() || f.name,
+        label_ru: f.label_ru.trim() || undefined,
+        field_type: f.field_type, required: f.required,
+      };
+      if (f.is_relation) fd.is_relation = true;
+      if (f.relation_type) fd.relation_type = f.relation_type;
+      if (f.entity_type_filter) fd.entity_type_filter = f.entity_type_filter;
+      if (f.field_type === 'select' && f.select_options) {
+        fd.select_options = f.select_options.split('\n').map(s => s.trim()).filter(Boolean);
+      }
+      return fd;
+    });
 
     if (isEdit) {
       updateMutation.mutate({
@@ -288,34 +321,105 @@ export default function EntityTypesPage() {
               </button>
             </div>
             {fields.length > 0 && (
-              <div className="space-y-2">
-                <div className="grid gap-2 text-[10px] font-mono uppercase tracking-widest mb-1" style={{ gridTemplateColumns: '1fr 1fr 1fr 80px 60px 24px', color: 'var(--text-muted)' }}>
+              <div className="space-y-3">
+                <div className="grid gap-2 text-[10px] font-mono uppercase tracking-widest mb-1" style={{ gridTemplateColumns: '1fr 1fr 1fr 100px 52px 20px', color: 'var(--text-muted)' }}>
                   <span>{t.etm_field_name}</span><span>{t.etm_field_label_en}</span>
                   <span>{t.etm_field_label_ru}</span><span>{t.etm_field_type}</span>
                   <span>{t.etm_field_required}</span><span />
                 </div>
                 {fields.map((f, i) => (
-                  <div key={i} className="grid gap-2 items-center" style={{ gridTemplateColumns: '1fr 1fr 1fr 80px 60px 24px' }}>
-                    <input value={f.name} onChange={e => updateField(i, 'name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                      placeholder={t.etm_field_name_ph} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={inputStyle} />
-                    <input value={f.label_en} onChange={e => updateField(i, 'label_en', e.target.value)}
-                      placeholder={t.etm_field_label_en} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={inputStyle} />
-                    <input value={f.label_ru} onChange={e => updateField(i, 'label_ru', e.target.value)}
-                      placeholder={t.etm_field_label_ru} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={inputStyle} />
-                    <select value={f.field_type} onChange={e => updateField(i, 'field_type', e.target.value)}
-                      className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={inputStyle}>
-                      {FIELD_TYPES.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                    </select>
-                    <div className="flex items-center justify-center">
-                      <button onClick={() => updateField(i, 'required', !f.required)}
-                        className="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
-                        style={{ borderColor: f.required ? 'var(--accent)' : 'var(--border-light)', background: f.required ? 'var(--accent-dim)' : '' }}>
-                        {f.required && <Check size={10} style={{ color: 'var(--accent)' }} />}
+                  <div key={i} className="rounded-lg p-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+                    {/* Main row */}
+                    <div className="grid gap-2 items-center" style={{ gridTemplateColumns: '1fr 1fr 1fr 100px 52px 20px' }}>
+                      <input value={f.name} onChange={e => updateField(i, 'name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                        placeholder={t.etm_field_name_ph} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }} />
+                      <input value={f.label_en} onChange={e => updateField(i, 'label_en', e.target.value)}
+                        placeholder={t.etm_field_label_en} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }} />
+                      <input value={f.label_ru} onChange={e => updateField(i, 'label_ru', e.target.value)}
+                        placeholder={t.etm_field_label_ru} className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }} />
+                      <select value={f.field_type} onChange={e => updateField(i, 'field_type', e.target.value)}
+                        className="px-2 py-1.5 rounded font-mono text-xs outline-none" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+                        {FIELD_TYPES.map(ft => (
+                          <option key={ft} value={ft}>{FIELD_TYPE_LABELS[ft][lang === 'ru' ? 'ru' : 'en']}</option>
+                        ))}
+                      </select>
+                      <div className="flex items-center justify-center">
+                        <button onClick={() => updateField(i, 'required', !f.required)}
+                          className="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
+                          style={{ borderColor: f.required ? 'var(--accent)' : 'var(--border-light)', background: f.required ? 'var(--accent-dim)' : '' }}>
+                          {f.required && <Check size={10} style={{ color: 'var(--accent)' }} />}
+                        </button>
+                      </div>
+                      <button onClick={() => removeField(i)} className="p-0.5 flex-shrink-0 transition-colors" style={{ color: 'var(--text-muted)' }}>
+                        <X size={13} />
                       </button>
                     </div>
-                    <button onClick={() => removeField(i)} className="p-0.5 flex-shrink-0 transition-colors" style={{ color: 'var(--text-muted)' }}>
-                      <X size={13} />
-                    </button>
+
+                    {/* Expanded config for special types */}
+                    {/* Expanded config for entity/entities - is_relation toggle */}
+                    {(f.field_type === 'entity' || f.field_type === 'entities') && (
+                      <div className="mt-2 pt-2 space-y-2" style={{ borderTop: '1px solid var(--border)' }}>
+                        {/* is_relation toggle */}
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div
+                            onClick={() => updateField(i, 'is_relation', !f.is_relation)}
+                            className="w-8 h-4 rounded-full relative transition-colors cursor-pointer flex-shrink-0"
+                            style={{ background: f.is_relation ? 'var(--accent)' : 'var(--border-light)' }}>
+                            <div className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all"
+                              style={{ left: f.is_relation ? '1rem' : '0.125rem' }} />
+                          </div>
+                          <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                            {lang === 'ru' ? 'Является связью (отображать в графе)' : 'Is a relation (show in graph)'}
+                          </span>
+                        </label>
+
+                        {/* relation_type picker — only when is_relation enabled */}
+                        {f.is_relation && (
+                          <div className="grid grid-cols-2 gap-2 pl-10">
+                            <div>
+                              <label className="block text-[10px] font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                                {lang === 'ru' ? 'Тип связи' : 'Relationship type'}
+                              </label>
+                              <select value={f.relation_type || ''} onChange={e => updateField(i, 'relation_type', e.target.value)}
+                                className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none"
+                                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+                                <option value="">{lang === 'ru' ? '— linked_to (по умолчанию) —' : '— linked_to (default) —'}</option>
+                                {(relTypeSchemas as any[]).map((rt: any) => (
+                                  <option key={rt.id} value={rt.name}>
+                                    {rt.emoji} {lang === 'ru' ? rt.label_ru || rt.label_en : rt.label_en}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                                {lang === 'ru' ? 'Фильтр типа сущности' : 'Entity type filter'}
+                              </label>
+                              <input value={f.entity_type_filter || ''} onChange={e => updateField(i, 'entity_type_filter', e.target.value)}
+                                placeholder="person, org, ip..."
+                                className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none"
+                                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {f.field_type === 'select' && (
+                      <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+                        <label className="block text-[10px] font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {lang === 'ru' ? 'Варианты выбора (каждый с новой строки)' : 'Options (one per line)'}
+                        </label>
+                        <textarea
+                          value={f.select_options || ''}
+                          onChange={e => updateField(i, 'select_options', e.target.value)}
+                          placeholder={lang === 'ru' ? 'Мужской\nЖенский' : 'Male\nFemale'}
+                          rows={3}
+                          className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none resize-none"
+                          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

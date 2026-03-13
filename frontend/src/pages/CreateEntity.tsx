@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { createEntity, getEntities } from '../api';
+import { createEntity, getEntities, createRelationship } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
 import { useSettings } from '../context/SettingsContext';
@@ -72,6 +72,19 @@ export default function CreateEntity() {
     onSuccess: (entity) => {
       queryClient.invalidateQueries({ queryKey: ['entities'] });
       queryClient.invalidateQueries({ queryKey: ['stats'] });
+      // Auto-create relationships for entity/entities fields with is_relation=true
+      const fields = customSchema?.fields || [];
+      fields.forEach((f: any) => {
+        if (!f.is_relation) return;
+        const relType = f.relation_type || 'linked_to';
+        if (f.field_type === 'entity') {
+          const targetId = schemaValues[f.name];
+          if (targetId) createRelationship({ source_entity_id: entity.id, target_entity_id: targetId, type: relType });
+        } else if (f.field_type === 'entities') {
+          const ids = (schemaValues[f.name] || '').split(',').filter(Boolean);
+          ids.forEach((tid: string) => createRelationship({ source_entity_id: entity.id, target_entity_id: tid, type: relType }));
+        }
+      });
       navigate(`/entities/${entity.id}`);
     },
   });
@@ -327,6 +340,19 @@ export default function CreateEntity() {
                       </label>
                       {f.field_type === 'date' ? (
                         <DatePicker value={schemaValues[f.name] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))} dateLocale={dateLocale} />
+                      ) : f.field_type === 'boolean' ? (
+                        <button type="button"
+                          onClick={() => setSchemaValues(prev => ({ ...prev, [f.name]: prev[f.name] === 'true' ? 'false' : 'true' }))}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-mono text-sm"
+                          style={{ background: schemaValues[f.name] === 'true' ? '#1a3a2a' : '#2d1515', color: schemaValues[f.name] === 'true' ? '#4ade80' : '#f87171', border: '1px solid var(--border-light)' }}>
+                          {schemaValues[f.name] === 'true' ? '✓ Да / Yes' : '✗ Нет / No'}
+                        </button>
+                      ) : f.field_type === 'select' ? (
+                        <select value={schemaValues[f.name] || ''} onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
+                          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--border-hover)]">
+                          <option value="">{lang === 'ru' ? '— выбрать —' : '— select —'}</option>
+                          {(f.select_options || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
                       ) : (
                         <input
                           type={f.field_type === 'number' ? 'number' : 'text'}
@@ -523,6 +549,19 @@ export default function CreateEntity() {
                         </label>
                         {f.field_type === 'date' ? (
                           <DatePicker value={schemaValues[f.name] || ''} onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))} dateLocale={dateLocale} />
+                        ) : f.field_type === 'boolean' ? (
+                          <button type="button"
+                            onClick={() => setSchemaValues(prev => ({ ...prev, [f.name]: prev[f.name] === 'true' ? 'false' : 'true' }))}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-mono text-sm"
+                            style={{ background: schemaValues[f.name] === 'true' ? '#1a3a2a' : '#2d1515', color: schemaValues[f.name] === 'true' ? '#4ade80' : '#f87171', border: '1px solid var(--border-light)' }}>
+                            {schemaValues[f.name] === 'true' ? '✓ Да / Yes' : '✗ Нет / No'}
+                          </button>
+                        ) : f.field_type === 'select' ? (
+                          <select value={schemaValues[f.name] || ''} onChange={e => setSchemaValues(prev => ({ ...prev, [f.name]: e.target.value }))}
+                            className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--border-hover)]">
+                            <option value="">{lang === 'ru' ? '— выбрать —' : '— select —'}</option>
+                            {(f.select_options || []).map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
                         ) : (
                           <input
                             type={f.field_type === 'number' ? 'number' : 'text'}

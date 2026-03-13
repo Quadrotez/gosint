@@ -2,9 +2,12 @@ export interface FieldDefinition {
   name: string;
   label_en: string;
   label_ru?: string;
-  field_type: 'text' | 'date' | 'url' | 'number' | 'entity' | 'entities';
+  field_type: 'text' | 'date' | 'url' | 'number' | 'entity' | 'entities' | 'boolean' | 'select';
   required: boolean;
-  entity_type_filter?: string; // optional filter for entity field type
+  entity_type_filter?: string;  // filter by entity type for entity/entities fields
+  is_relation?: boolean;        // if true, entity/entities field also creates a graph relationship
+  relation_type?: string;       // which relationship type to auto-create
+  select_options?: string[];    // options for 'select' field type
 }
 
 export interface RelationshipTypeSchema {

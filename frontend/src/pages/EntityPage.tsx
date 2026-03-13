@@ -311,6 +311,21 @@ export default function EntityPage() {
                     if (v) newMeta[k] = v; else delete newMeta[k];
                   });
                   updateMutation.mutate({ metadata: newMeta });
+                  // Auto-create relationships for entity/entities fields with is_relation=true
+                  allKeys.forEach(k => {
+                    const schemaDef = customSchema?.fields?.find((f: any) => f.name === k);
+                    if (!schemaDef?.is_relation) return;
+                    const relType = schemaDef.relation_type || 'linked_to';
+                    if (schemaDef.field_type === 'entity' && extrasEdits[k] && extrasEdits[k] !== String(meta[k] || '')) {
+                      addRelMutation.mutate({ source_entity_id: id!, target_entity_id: extrasEdits[k], type: relType });
+                    } else if (schemaDef.field_type === 'entities') {
+                      const prev = String(meta[k] || '').split(',').filter(Boolean);
+                      const next = extrasEdits[k].split(',').filter(Boolean);
+                      next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
+                        addRelMutation.mutate({ source_entity_id: id!, target_entity_id: tid, type: relType });
+                      });
+                    }
+                  });
                   setEditingExtras(false);
                 };
 
@@ -349,6 +364,24 @@ export default function EntityPage() {
                                   dateLocale={dateLocale}
                                   lang={lang}
                                 />
+                              ) : ftype === 'boolean' ? (
+                                <button
+                                  onClick={() => setExtrasEdits(prev => ({ ...prev, [k]: prev[k] === 'true' ? 'false' : 'true' }))}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs"
+                                  style={{ background: extrasEdits[k] === 'true' ? '#1a3a2a' : '#2d1515', color: extrasEdits[k] === 'true' ? '#4ade80' : '#f87171' }}>
+                                  {extrasEdits[k] === 'true' ? ('✓ ' + (lang === 'ru' ? 'Да' : 'Yes')) : ('✗ ' + (lang === 'ru' ? 'Нет' : 'No'))}
+                                </button>
+                              ) : ftype === 'select' ? (
+                                <select
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={e => setExtrasEdits(prev => ({ ...prev, [k]: e.target.value }))}
+                                  className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
+                                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}>
+                                  <option value="">{lang === 'ru' ? '— выбрать —' : '— select —'}</option>
+                                  {(schemaDef?.select_options || []).map((opt: string) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
                               ) : ftype === 'entity' ? (
                                 <InlineEntityPicker
                                   value={extrasEdits[k] ?? ''}
@@ -452,12 +485,12 @@ export default function EntityPage() {
             const schemaFields = customSchema?.fields || [];
             const presetFields = builtinPreset || [];
             // Combined unique keys (schema takes priority for labels)
-            const allStructured: { key: string; label: string; type: string }[] = [];
+            const allStructured: { key: string; label: string; type: string; select_options?: string[]; is_relation?: boolean; relation_type?: string }[] = [];
             const seen = new Set<string>();
             schemaFields.forEach(f => {
               if (!seen.has(f.name)) {
                 seen.add(f.name);
-                allStructured.push({ key: f.name, label: (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en, type: f.field_type });
+                allStructured.push({ key: f.name, label: (lang === 'ru' && f.label_ru) ? f.label_ru : f.label_en, type: f.field_type, select_options: f.select_options, is_relation: f.is_relation, relation_type: f.relation_type });
               }
             });
             presetFields.forEach(f => {
@@ -482,6 +515,21 @@ export default function EntityPage() {
                       if (v) newMeta[f.key] = v; else delete newMeta[f.key];
                     });
                     updateMutation.mutate({ metadata: newMeta });
+                    // Auto-create relationships for entity/entities fields with is_relation=true
+                    const schemaFields = customSchema?.fields || [];
+                    schemaFields.forEach((sf: any) => {
+                      if (!sf.is_relation) return;
+                      const relType = sf.relation_type || 'linked_to';
+                      if (sf.field_type === 'entity' && extrasEdits[sf.name] && extrasEdits[sf.name] !== String(meta[sf.name] || '')) {
+                        addRelMutation.mutate({ source_entity_id: id!, target_entity_id: extrasEdits[sf.name], type: relType });
+                      } else if (sf.field_type === 'entities') {
+                        const prev = String(meta[sf.name] || '').split(',').filter(Boolean);
+                        const next = (extrasEdits[sf.name] || '').split(',').filter(Boolean);
+                        next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) =>
+                          addRelMutation.mutate({ source_entity_id: id!, target_entity_id: tid, type: relType })
+                        );
+                      }
+                    });
                     setEditingExtras(false);
                   };
                   return (
@@ -517,6 +565,24 @@ export default function EntityPage() {
                                   dateLocale={dateLocale}
                                   lang={lang}
                                 />
+                              ) : field.type === 'boolean' ? (
+                                <button
+                                  onClick={() => setExtrasEdits(prev => ({ ...prev, [field.key]: prev[field.key] === 'true' ? 'false' : 'true' }))}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs"
+                                  style={{ background: extrasEdits[field.key] === 'true' ? '#1a3a2a' : '#2d1515', color: extrasEdits[field.key] === 'true' ? '#4ade80' : '#f87171' }}>
+                                  {extrasEdits[field.key] === 'true' ? ('✓ ' + (lang === 'ru' ? 'Да' : 'Yes')) : ('✗ ' + (lang === 'ru' ? 'Нет' : 'No'))}
+                                </button>
+                              ) : field.type === 'select' ? (
+                                <select
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={e => setExtrasEdits(prev => ({ ...prev, [field.key]: e.target.value }))}
+                                  className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
+                                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}>
+                                  <option value="">{lang === 'ru' ? '— выбрать —' : '— select —'}</option>
+                                  {(field as any).select_options?.map((opt: string) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
                               ) : field.type === 'entity' ? (
                                 <InlineEntityPicker
                                   value={extrasEdits[field.key] ?? ''}
@@ -1089,7 +1155,8 @@ function EntityFieldDisplay({
   value: string; fieldType: string;
   entities: any[]; schemas: any[]; lang: string;
 }) {
-  if (!value) return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>—</span>;
+  if (value === '' || value === null || value === undefined)
+    return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>—</span>;
 
   const getLabel = (e: any) => {
     const m = (e.metadata || {}) as Record<string, string>;
@@ -1099,6 +1166,23 @@ function EntityFieldDisplay({
     const s = schemas.find((x: any) => x.name === type);
     return s?.icon || '🔍';
   };
+
+  if (fieldType === 'boolean') {
+    const isTrue = value === 'true' || value === '1' || value === 'yes';
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-xs"
+        style={{ background: isTrue ? '#1a3a2a' : '#2d1515', color: isTrue ? '#4ade80' : '#f87171' }}>
+        {isTrue ? '✓ ' + (lang === 'ru' ? 'Да' : 'Yes') : '✗ ' + (lang === 'ru' ? 'Нет' : 'No')}
+      </span>
+    );
+  }
+
+  if (fieldType === 'select') {
+    return <span className="inline-flex items-center px-2 py-0.5 rounded font-mono text-xs"
+      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+      {value}
+    </span>;
+  }
 
   if (fieldType === 'entity') {
     const ent = entities.find(e => e.id === value);
