@@ -19,6 +19,11 @@ export default function CreateEntity() {
   const { t, lang } = useLang();
   const { dateLocale } = useSettings();
   const { schemas, allTypeNames, getColor, getIcon, getLabel } = useEntitySchemas();
+  const { data: allEntities = [] } = useQuery<Entity[]>({
+    queryKey: ['entities'],
+    queryFn: () => getEntities({ limit: 1000 }),
+  });
+  const addressEntities = allEntities.filter(e => e.type === 'address');
 
   const [type, setType] = useState('person');
   const [value, setValue] = useState('');
@@ -68,7 +73,7 @@ export default function CreateEntity() {
     : '';
 
   // Geo → address entity: queued until parent entity is created
-  const [pendingGeoAddress, setPendingGeoAddress] = useState<{ name: string; coords: string } | null>(null);
+  const [pendingGeoAddress, setPendingGeoAddress] = useState<{ name: string; coords: string; existingId?: string } | null>(null);
 
   const mutation = useMutation({
     mutationFn: createEntity,
@@ -97,14 +102,20 @@ export default function CreateEntity() {
           });
         }
       });
-      // Auto-create address entity from geoposition field if requested
+      // Auto-create (or reuse) address entity from geoposition field if requested
       if (pendingGeoAddress) {
-        createEntity({ type: 'address', value: pendingGeoAddress.name, metadata: { coordinates: pendingGeoAddress.coords } })
-          .then((addrEntity) => {
-            createRelationship({ source_entity_id: entity.id, target_entity_id: addrEntity.id, type: 'located_at' });
-            queryClient.invalidateQueries({ queryKey: ['entities'] });
-          })
-          .catch(() => {});
+        const linkAddress = (addrId: string) => {
+          createRelationship({ source_entity_id: entity.id, target_entity_id: addrId, type: 'located_at' });
+          queryClient.invalidateQueries({ queryKey: ['entities'] });
+        };
+        if (pendingGeoAddress.existingId) {
+          // User picked an existing address entity — just link it
+          linkAddress(pendingGeoAddress.existingId);
+        } else {
+          createEntity({ type: 'address', value: pendingGeoAddress.name, metadata: { coordinates: pendingGeoAddress.coords } })
+            .then((addrEntity) => linkAddress(addrEntity.id))
+            .catch(() => {});
+        }
       }
       navigate(`/entities/${entity.id}`);
     },
@@ -386,6 +397,8 @@ export default function CreateEntity() {
                         value={schemaValues[f.name] || ''}
                         onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
                         onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
+                        onExistingAddressPicked={(id) => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                        addressEntities={addressEntities}
                         lang={lang}
                       />
                     );
@@ -611,6 +624,8 @@ export default function CreateEntity() {
                           value={schemaValues[f.name] || ''}
                           onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
                           onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
+                          onExistingAddressPicked={(id) => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                          addressEntities={addressEntities}
                           lang={lang}
                         />
                       );
@@ -985,10 +1000,12 @@ interface GeoPositionPickerProps {
   value: string;        // stored as "lat,lon"
   onChange: (v: string) => void;
   onAddressResolved?: (displayName: string, coords: string) => void;
+  onExistingAddressPicked?: (existingId: string) => void;
+  addressEntities?: Entity[];  // existing address entities for reuse picker
   lang: string;
 }
 
-function GeoPositionPicker({ label, required, value, onChange, onAddressResolved, lang }: GeoPositionPickerProps) {
+function GeoPositionPicker({ label, required, value, onChange, onAddressResolved, onExistingAddressPicked, addressEntities = [], lang }: GeoPositionPickerProps) {
   const [address, setAddress] = useState('');
   const [resolvedName, setResolvedName] = useState('');  // full display_name from Nominatim
   const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
@@ -996,6 +1013,8 @@ function GeoPositionPicker({ label, required, value, onChange, onAddressResolved
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [addressSaved, setAddressSaved] = useState(false);
+  const [addrSearch, setAddrSearch] = useState('');
+  const [showExisting, setShowExisting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [lat, lon] = value ? value.split(',') : ['', ''];
@@ -1069,20 +1088,82 @@ function GeoPositionPicker({ label, required, value, onChange, onAddressResolved
             </a>
             <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
           </div>
-          {onAddressResolved && (
-            <button
-              type="button"
-              onClick={handleSaveAsAddress}
-              disabled={addressSaved}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all disabled:opacity-60"
-              style={addressSaved
-                ? { background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }
-                : { background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
-              {addressSaved ? '✓ ' : '📍 '}
-              {addressSaved
-                ? (lang === 'ru' ? 'Адрес будет создан как сущность' : 'Address entity will be created')
-                : (lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity')}
-            </button>
+          {onAddressResolved && !addressSaved && (
+            <div className="space-y-1.5">
+              {/* Create new address entity */}
+              <button
+                type="button"
+                onClick={handleSaveAsAddress}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all w-full"
+                style={{ background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
+                📍 {lang === 'ru' ? 'Создать новую сущность «Адрес»' : 'Create new Address entity'}
+              </button>
+
+              {/* Pick existing address entity */}
+              {addressEntities.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowExisting(v => !v)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all w-full"
+                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}>
+                    🔗 {lang === 'ru' ? `Связать с существующим адресом (${addressEntities.length})` : `Link to existing address (${addressEntities.length})`}
+                    <span className="ml-auto">{showExisting ? '▲' : '▼'}</span>
+                  </button>
+                  {showExisting && (
+                    <div className="mt-1 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+                      <div className="p-1.5 border-b" style={{ borderColor: 'var(--border-light)' }}>
+                        <input
+                          value={addrSearch}
+                          onChange={e => setAddrSearch(e.target.value)}
+                          placeholder={lang === 'ru' ? 'Поиск по адресам...' : 'Search addresses...'}
+                          className="w-full px-2 py-1 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
+                        />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto">
+                        {addressEntities
+                          .filter(e => !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase()))
+                          .map(e => (
+                            <button
+                              key={e.id}
+                              type="button"
+                              onClick={() => {
+                                onExistingAddressPicked?.(e.id);
+                                setAddressSaved(true);
+                                setShowExisting(false);
+                              }}
+                              className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
+                              style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                              <span style={{ color: '#a78bfa' }}>📍</span>
+                              <span className="truncate">{e.value}</span>
+                              {(e.metadata as any)?.coordinates && (
+                                <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                                  {(e.metadata as any).coordinates}
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        {addressEntities.filter(e => !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase())).length === 0 && (
+                          <p className="px-3 py-2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                            {lang === 'ru' ? 'Не найдено' : 'Not found'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {addressSaved && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-xs"
+              style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
+              <span>✓ {lang === 'ru' ? 'Адрес будет привязан' : 'Address will be linked'}</span>
+              <button type="button" onClick={() => { setAddressSaved(false); setShowExisting(false); }}
+                className="text-[10px] underline" style={{ color: '#4ade80' }}>
+                {lang === 'ru' ? 'отмена' : 'undo'}
+              </button>
+            </div>
           )}
         </div>
       )}
