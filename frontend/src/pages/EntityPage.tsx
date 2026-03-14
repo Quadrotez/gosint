@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getEntity, getEntityRelationships, createRelationship,
   deleteRelationship, getEntities, updateEntity, getRelationshipTypeSchemas,
+  createEntity,
 } from '../api';
 import {
   PERSON_RELATIONSHIP_TYPES, GENERIC_RELATIONSHIP_TYPES, BUILTIN_FIELD_PRESETS,
@@ -407,6 +408,7 @@ export default function EntityPage() {
                                 <InlineGeoPicker
                                   value={extrasEdits[k] ?? ''}
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
+                                  entityId={id}
                                   lang={lang}
                                 />
                               ) : (
@@ -619,6 +621,7 @@ export default function EntityPage() {
                                 <InlineGeoPicker
                                   value={extrasEdits[field.key] ?? ''}
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
+                                  entityId={id}
                                   lang={lang}
                                 />
                               ) : (
@@ -1498,59 +1501,116 @@ function EntityIconPicker({ currentIcon, defaultIcon, onChange, lang }: {
 
 // ── InlineGeoPicker: compact geo editor for EntityPage ──────────────────────
 
-function InlineGeoPicker({ value, onChange, lang }: {
-  value: string; onChange: (v: string) => void; lang: string;
+function InlineGeoPicker({ value, onChange, entityId, lang }: {
+  value: string; onChange: (v: string) => void; entityId?: string; lang: string;
 }) {
   const [address, setAddress] = useState('');
+  const [resolvedName, setResolvedName] = useState('');
   const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedEntityId, setSavedEntityId] = useState<string | null>(null);
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qc = useQueryClient();
 
   const [lat, lon] = value ? value.split(',') : ['', ''];
   const osmUrl = value ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16` : null;
 
-  const doSearch = async () => {
-    if (!address.trim()) return;
+  const doSearch = async (q: string) => {
+    if (!q.trim()) return;
     setSearching(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=5`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
         { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } }
       );
-      setResults(await res.json());
-      setOpen(true);
+      const data = await res.json();
+      setResults(data); setOpen(true);
     } catch { /* ignore */ }
     finally { setSearching(false); }
   };
 
+  const handleInput = (v: string) => {
+    setAddress(v);
+    if (debRef.current) clearTimeout(debRef.current);
+    if (v.trim().length >= 3) debRef.current = setTimeout(() => doSearch(v), 400);
+    else { setResults([]); setOpen(false); }
+  };
+
   const select = (r: { display_name: string; lat: string; lon: string }) => {
-    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
+    const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
+    onChange(coords);
     setAddress(r.display_name);
+    setResolvedName(r.display_name);
+    setSavedEntityId(null);
     setOpen(false);
   };
 
+  const handleSaveAsAddress = async () => {
+    if (!entityId || !value || !resolvedName || saving) return;
+    setSaving(true);
+    try {
+      const addrEntity = await createEntity({
+        type: 'address',
+        value: resolvedName,
+        metadata: { coordinates: value },
+      });
+      await createRelationship({ source_entity_id: entityId, target_entity_id: addrEntity.id, type: 'located_at' });
+      setSavedEntityId(addrEntity.id);
+      qc.invalidateQueries({ queryKey: ['entities'] });
+      qc.invalidateQueries({ queryKey: ['relationships', entityId] });
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {value && (
-        <div className="flex items-center gap-2">
-          <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
-            className="text-xs font-mono px-2 py-0.5 rounded"
-            style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
-            📍 {lat}, {lon} ↗
-          </a>
-          <button onClick={() => onChange('')} className="text-xs" style={{ color: 'var(--text-muted)' }}>×</button>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
+              className="text-xs font-mono px-2 py-0.5 rounded"
+              style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+              📍 {lat}, {lon} ↗
+            </a>
+            <button onClick={() => { onChange(''); setResolvedName(''); setSavedEntityId(null); }}
+              className="text-xs" style={{ color: 'var(--text-muted)' }}>×</button>
+          </div>
+          {entityId && resolvedName && (
+            savedEntityId ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs"
+                style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
+                <span>✓</span>
+                <span>{lang === 'ru' ? 'Сущность адреса создана' : 'Address entity created'}</span>
+                <a href={`/entities/${savedEntityId}`}
+                  className="ml-auto underline text-[10px]" style={{ color: '#4ade80' }}>
+                  {lang === 'ru' ? 'Открыть' : 'Open'} ↗
+                </a>
+              </div>
+            ) : (
+              <button type="button" onClick={handleSaveAsAddress} disabled={saving}
+                className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs disabled:opacity-50 transition-all"
+                style={{ background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
+                {saving ? '…' : '📍'}
+                {saving
+                  ? (lang === 'ru' ? 'Создаю...' : 'Creating...')
+                  : (lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity')}
+              </button>
+            )
+          )}
         </div>
       )}
       <div className="flex gap-1">
         <input
           value={address}
-          onChange={e => setAddress(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && doSearch()}
+          onChange={e => handleInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && doSearch(address)}
           placeholder={lang === 'ru' ? 'Адрес...' : 'Address...'}
           className="flex-1 px-2 py-1 rounded font-mono text-xs outline-none border"
           style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
         />
-        <button onClick={doSearch} disabled={searching || !address.trim()}
+        <button onClick={() => doSearch(address)} disabled={searching || !address.trim()}
           className="px-2 py-1 rounded font-mono text-xs disabled:opacity-40"
           style={{ background: 'var(--accent)', color: 'var(--bg-main)' }}>
           {searching ? '…' : '🔍'}

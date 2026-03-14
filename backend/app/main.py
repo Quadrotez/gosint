@@ -1,3 +1,4 @@
+import json
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +28,20 @@ BUILTIN_SCHEMAS = [
     {"name": "website",       "label_en": "Website",        "label_ru": "Веб-сайт",             "icon": "🔗", "color": "#34d399"},
     {"name": "crypto_wallet", "label_en": "Crypto Wallet",  "label_ru": "Крипто-кошелёк",       "icon": "₿",  "color": "#f59e0b"},
 ]
+
+
+ADDRESS_DEFAULT_FIELDS = json.dumps([
+    {"name": "country",      "label_en": "Country",           "label_ru": "Страна",           "field_type": "text",        "required": False},
+    {"name": "region",       "label_en": "Region / Oblast",   "label_ru": "Регион / Область", "field_type": "text",        "required": False},
+    {"name": "city",         "label_en": "City",              "label_ru": "Город",            "field_type": "text",        "required": False},
+    {"name": "district",     "label_en": "District",          "label_ru": "Район",            "field_type": "text",        "required": False},
+    {"name": "street",       "label_en": "Street",            "label_ru": "Улица",            "field_type": "text",        "required": False},
+    {"name": "building",     "label_en": "Building / House",  "label_ru": "Дом / Строение",   "field_type": "text",        "required": False},
+    {"name": "apartment",    "label_en": "Apartment",         "label_ru": "Квартира",         "field_type": "text",        "required": False},
+    {"name": "postal_code",  "label_en": "Postal Code",       "label_ru": "Почтовый индекс",  "field_type": "text",        "required": False},
+    {"name": "coordinates",  "label_en": "Coordinates",       "label_ru": "Координаты",       "field_type": "geoposition", "required": False},
+    {"name": "notes_text",   "label_en": "Notes",             "label_ru": "Примечания",       "field_type": "text",        "required": False},
+])
 
 
 def run_migrations():
@@ -61,6 +76,21 @@ def run_migrations():
         add_col("entities", "imported_from_group_id", "TEXT")
         add_col("entity_groups", "is_imported", "BOOLEAN DEFAULT 0")
         add_col("entity_groups", "source_published_group_id", "TEXT")
+
+        # Migrate: seed address schema fields for existing users who have empty address fields
+        try:
+            from sqlalchemy.orm import Session as _Session
+            with _Session(engine) as _db:
+                addr_schemas = _db.query(models.EntityTypeSchema).filter(
+                    models.EntityTypeSchema.name == "address",
+                    models.EntityTypeSchema.is_builtin == True,
+                ).all()
+                for s in addr_schemas:
+                    if not s.fields:
+                        s.fields = ADDRESS_DEFAULT_FIELDS
+                _db.commit()
+        except Exception:
+            pass
         # Entity groups table (new)
         if "entity_groups" not in inspector.get_table_names():
             try:
@@ -132,19 +162,28 @@ def run_migrations():
                 pass
 
 
+
+
 def _seed_builtin_schemas(db, user_id: str):
     import uuid as _uuid
-    existing_names = {
-        s.name for s in db.query(models.EntityTypeSchema)
+    existing = {
+        s.name: s for s in db.query(models.EntityTypeSchema)
         .filter(models.EntityTypeSchema.user_id == user_id).all()
     }
     for bs in BUILTIN_SCHEMAS:
-        if bs["name"] not in existing_names:
+        if bs["name"] not in existing:
+            fields = ADDRESS_DEFAULT_FIELDS if bs["name"] == "address" else None
             db.add(models.EntityTypeSchema(
                 id=str(_uuid.uuid4()), user_id=user_id,
                 name=bs["name"], label_en=bs["label_en"], label_ru=bs["label_ru"],
                 icon=bs["icon"], color=bs["color"], is_builtin=True,
+                fields=fields,
             ))
+        elif bs["name"] == "address":
+            # Migrate existing address schema to have default fields if none set
+            addr = existing["address"]
+            if not addr.fields:
+                addr.fields = ADDRESS_DEFAULT_FIELDS
     db.commit()
 
 

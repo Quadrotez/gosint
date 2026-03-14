@@ -67,6 +67,9 @@ export default function CreateEntity() {
     ? [lastName, firstName, middleName].filter(Boolean).join(' ')
     : '';
 
+  // Geo → address entity: queued until parent entity is created
+  const [pendingGeoAddress, setPendingGeoAddress] = useState<{ name: string; coords: string } | null>(null);
+
   const mutation = useMutation({
     mutationFn: createEntity,
     onSuccess: (entity) => {
@@ -94,6 +97,15 @@ export default function CreateEntity() {
           });
         }
       });
+      // Auto-create address entity from geoposition field if requested
+      if (pendingGeoAddress) {
+        createEntity({ type: 'address', value: pendingGeoAddress.name, metadata: { coordinates: pendingGeoAddress.coords } })
+          .then((addrEntity) => {
+            createRelationship({ source_entity_id: entity.id, target_entity_id: addrEntity.id, type: 'located_at' });
+            queryClient.invalidateQueries({ queryKey: ['entities'] });
+          })
+          .catch(() => {});
+      }
       navigate(`/entities/${entity.id}`);
     },
   });
@@ -373,6 +385,7 @@ export default function CreateEntity() {
                         key={f.name} label={label} required={f.required}
                         value={schemaValues[f.name] || ''}
                         onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                        onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
                         lang={lang}
                       />
                     );
@@ -597,6 +610,7 @@ export default function CreateEntity() {
                           required={f.required}
                           value={schemaValues[f.name] || ''}
                           onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                          onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
                           lang={lang}
                         />
                       );
@@ -970,15 +984,18 @@ interface GeoPositionPickerProps {
   required: boolean;
   value: string;        // stored as "lat,lon"
   onChange: (v: string) => void;
+  onAddressResolved?: (displayName: string, coords: string) => void;
   lang: string;
 }
 
-function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositionPickerProps) {
+function GeoPositionPicker({ label, required, value, onChange, onAddressResolved, lang }: GeoPositionPickerProps) {
   const [address, setAddress] = useState('');
+  const [resolvedName, setResolvedName] = useState('');  // full display_name from Nominatim
   const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
+  const [addressSaved, setAddressSaved] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [lat, lon] = value ? value.split(',') : ['', ''];
@@ -1014,13 +1031,25 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
   };
 
   const select = (r: { display_name: string; lat: string; lon: string }) => {
-    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
+    const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
+    onChange(coords);
     setAddress(r.display_name);
+    setResolvedName(r.display_name);
+    setAddressSaved(false);
     setOpen(false);
     setResults([]);
   };
 
-  const clear = () => { onChange(''); setAddress(''); setResults([]); setOpen(false); };
+  const clear = () => {
+    onChange(''); setAddress(''); setResolvedName('');
+    setResults([]); setOpen(false); setAddressSaved(false);
+  };
+
+  const handleSaveAsAddress = () => {
+    if (!value || !resolvedName) return;
+    onAddressResolved?.(resolvedName, value);
+    setAddressSaved(true);
+  };
 
   return (
     <div>
@@ -1028,16 +1057,33 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
         📍 {label}{required && <span className="text-[#ff4444]">*</span>}
       </label>
 
-      {/* Coords display + OSM link */}
+      {/* Coords display + OSM link + Save as address */}
       {value && (
-        <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg text-xs font-mono"
-          style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
-          <span style={{ color: 'var(--accent)' }}>📌 {value}</span>
-          <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
-            className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>
-            OSM ↗
-          </a>
-          <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
+        <div className="mb-2 space-y-1.5">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono"
+            style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
+            <span style={{ color: 'var(--accent)' }}>📌 {value}</span>
+            <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
+              className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>
+              OSM ↗
+            </a>
+            <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
+          </div>
+          {onAddressResolved && (
+            <button
+              type="button"
+              onClick={handleSaveAsAddress}
+              disabled={addressSaved}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all disabled:opacity-60"
+              style={addressSaved
+                ? { background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }
+                : { background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
+              {addressSaved ? '✓ ' : '📍 '}
+              {addressSaved
+                ? (lang === 'ru' ? 'Адрес будет создан как сущность' : 'Address entity will be created')
+                : (lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity')}
+            </button>
+          )}
         </div>
       )}
 
