@@ -112,7 +112,19 @@ export default function MiniGraph({ entityId, depth = 2 }: Props) {
           },
         },
       ],
-      layout: { name: 'cose', animate: false, padding: 20 } as cytoscape.LayoutOptions,
+      layout: (() => {
+        const n = (elements.filter((e: any) => !e.data.source)).length;
+        const repulsion = n < 15 ? 6_000 : n < 40 ? 18_000 : 40_000;
+        const edgeLen   = n < 15 ? 100  : n < 40 ? 150   : 200;
+        return {
+          name: 'cose', animate: false, padding: 20,
+          nodeRepulsion: () => repulsion,
+          idealEdgeLength: () => edgeLen,
+          gravity: n < 20 ? 0.3 : 0.15,
+          numIter: n < 30 ? 800 : 1400,
+          componentSpacing: Math.max(60, n * 4),
+        };
+      })() as cytoscape.LayoutOptions,
       userZoomingEnabled: true,
       userPanningEnabled: true,
       boxSelectionEnabled: false,

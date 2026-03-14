@@ -241,19 +241,41 @@ export default function GraphExplorer() {
           style: { 'line-color': selectedBorder, 'target-arrow-color': selectedBorder } as any,
         },
       ],
-      layout: {
-        name: 'cose',
-        animate: nodes.length < 40,
-        animationDuration: 400,
-        padding: 50,
-        nodeRepulsion: () => 10000,
-        idealEdgeLength: () => 130,
-        edgeElasticity: () => 0.45,
-        gravity: 0.25,
-        numIter: 1000,
-        coolingFactor: 0.99,
-        minTemp: 1.0,
-      } as any,
+      layout: (() => {
+        const n = nodes.length;
+        // Scale layout params by node count so dense graphs don't collapse
+        const repulsion  = n < 20  ? 8_000
+                         : n < 50  ? 20_000
+                         : n < 100 ? 45_000
+                         : n < 200 ? 90_000
+                         :           150_000;
+        const edgeLen    = n < 20  ? 120
+                         : n < 50  ? 160
+                         : n < 100 ? 220
+                         : n < 200 ? 300
+                         :           380;
+        const gravity    = n < 50  ? 0.25
+                         : n < 100 ? 0.15
+                         :           0.08;
+        const numIter    = n < 50  ? 1000
+                         : n < 100 ? 1500
+                         :           2500;
+        return {
+          name: 'cose',
+          animate: n < 60,
+          animationDuration: 500,
+          padding: Math.max(50, n * 2),
+          nodeRepulsion: () => repulsion,
+          idealEdgeLength: () => edgeLen,
+          edgeElasticity: () => 0.45,
+          gravity,
+          numIter,
+          coolingFactor: 0.97,
+          minTemp: 1.0,
+          randomize: n > 30,  // randomize start position for large graphs
+          componentSpacing: Math.max(80, n * 3),
+        };
+      })() as any,
       minZoom: 0.1, maxZoom: 4,
       userZoomingEnabled: true,
       userPanningEnabled: true,
