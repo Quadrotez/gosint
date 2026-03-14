@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Settings, Sun, Moon, Clock, Globe, Check, Download, Upload,
   Cloud, UploadCloud, DownloadCloud, RefreshCw, TestTube, Wifi, WifiOff,
@@ -165,6 +166,7 @@ export default function SettingsPage() {
   const { t, lang, setLang } = useLang();
   const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate } = useSettings();
   const toast = useToast();
+  const qc = useQueryClient();
   const [saved, setSaved] = useState(false);
 
   const importRef = useRef<HTMLInputElement>(null);
@@ -206,6 +208,11 @@ export default function SettingsPage() {
       if (errs && errs.length > 0) {
         toast.error((lang === 'ru' ? 'Ошибки при импорте: ' : 'Import errors: ') + errs.slice(0, 3).join('; '));
       }
+      // Invalidate all caches so updated schemas/entities are reflected immediately
+      await qc.invalidateQueries({ queryKey: ['entity-schemas'] });
+      await qc.invalidateQueries({ queryKey: ['rel-type-schemas'] });
+      await qc.invalidateQueries({ queryKey: ['entities'] });
+      await qc.invalidateQueries({ queryKey: ['stats'] });
     } catch { toast.error(lang === 'ru' ? 'Ошибка импорта' : 'Import failed'); }
     finally { setBackupLoading(false); }
   };
