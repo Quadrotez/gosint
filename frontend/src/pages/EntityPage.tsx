@@ -1510,13 +1510,17 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedEntityId, setSavedEntityId] = useState<string | null>(null);
-  const [showExisting, setShowExisting] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [addrSearch, setAddrSearch] = useState('');
+  const [showAptDetails, setShowAptDetails] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [entrance, setEntrance] = useState('');
+  const [floor, setFloor] = useState('');
+  const [apartment, setApartment] = useState('');
+  const [intercom, setIntercom] = useState('');
   const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const qc = useQueryClient();
 
-  // Load existing address entities for reuse
   const { data: allEntities = [] } = useQuery({
     queryKey: ['entities'],
     queryFn: () => getEntities({ limit: 1000 }),
@@ -1549,42 +1553,49 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
   };
 
   const select = (r: { display_name: string; lat: string; lon: string }) => {
-    const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
-    onChange(coords);
+    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
     setAddress(r.display_name);
     setResolvedName(r.display_name);
-    setSavedEntityId(null);
+    setSavedId(null);
     setOpen(false);
+    setShowAptDetails(true);
   };
 
-  const linkToAddress = async (addrId: string, addrName: string) => {
+  const linkTo = async (addrId: string) => {
     if (!entityId || saving) return;
     setSaving(true);
     try {
       await createRelationship({ source_entity_id: entityId, target_entity_id: addrId, type: 'located_at' });
-      setSavedEntityId(addrId);
+      setSavedId(addrId);
       qc.invalidateQueries({ queryKey: ['entities'] });
       qc.invalidateQueries({ queryKey: ['relationships', entityId] });
     } catch { /* ignore */ }
     finally { setSaving(false); }
   };
 
-  const handleSaveAsAddress = async () => {
+  const handleSave = async () => {
     if (!entityId || !value || !resolvedName || saving) return;
-    // Dedup: check if address with same coordinates already exists
+    // Dedup: same coords + same apartment = same entity
     const existing = addressEntities.find((e: any) => {
-      const meta = (e.metadata || {}) as Record<string, string>;
-      return meta.coordinates === value;
+      const m = (e.metadata || {}) as Record<string, string>;
+      const coordsMatch = m.coordinates === value;
+      if (!coordsMatch) return false;
+      if (isPrivate) return m.is_private === 'true';
+      return m.apartment === (apartment || '') && m.entrance === (entrance || '') && m.floor === (floor || '');
     });
-    if (existing) {
-      await linkToAddress(existing.id, existing.value);
-      return;
-    }
+    if (existing) { await linkTo(existing.id); return; }
     setSaving(true);
     try {
-      const addrEntity = await createEntity({ type: 'address', value: resolvedName, metadata: { coordinates: value } });
+      const meta: Record<string, string> = { coordinates: value, is_private: isPrivate ? 'true' : 'false' };
+      if (!isPrivate) {
+        if (entrance) meta.entrance = entrance;
+        if (floor) meta.floor = floor;
+        if (apartment) meta.apartment = apartment;
+        if (intercom) meta.intercom = intercom;
+      }
+      const addrEntity = await createEntity({ type: 'address', value: resolvedName, metadata: meta });
       await createRelationship({ source_entity_id: entityId, target_entity_id: addrEntity.id, type: 'located_at' });
-      setSavedEntityId(addrEntity.id);
+      setSavedId(addrEntity.id);
       qc.invalidateQueries({ queryKey: ['entities'] });
       qc.invalidateQueries({ queryKey: ['relationships', entityId] });
     } catch { /* ignore */ }
@@ -1597,6 +1608,50 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
 
   return (
     <div className="space-y-1.5">
+      {/* ── 1. Existing addresses first ── */}
+      {entityId && addressEntities.length > 0 && !savedId && (
+        <div className="rounded overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+          <div className="px-2 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-light)' }}>
+            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              🔗 {lang === 'ru' ? 'Существующие адреса' : 'Existing addresses'}
+            </span>
+            <input
+              value={addrSearch}
+              onChange={e => setAddrSearch(e.target.value)}
+              placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+              className="ml-auto w-28 px-1.5 py-0.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
+            />
+          </div>
+          <div className="max-h-32 overflow-y-auto">
+            {filteredAddrs.map((e: any) => (
+              <button key={e.id} type="button" onClick={() => linkTo(e.id)}
+                className="w-full px-2 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-1.5"
+                style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <span style={{ color: '#a78bfa' }}>📍</span>
+                <span className="truncate">{e.value}</span>
+                {(e.metadata as any)?.apartment && (
+                  <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                    {lang === 'ru' ? 'кв.' : 'apt.'} {(e.metadata as any).apartment}
+                  </span>
+                )}
+                {(e.metadata as any)?.is_private === 'true' && (
+                  <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>🏠</span>
+                )}
+              </button>
+            ))}
+            {filteredAddrs.length === 0 && (
+              <p className="px-2 py-1.5 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Не найдено' : 'Not found'}
+              </p>
+            )}
+          </div>
+          <div className="px-2 py-1 border-t text-[10px] font-mono" style={{ borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
+            {lang === 'ru' ? '— или найдите новый адрес ниже —' : '— or search for a new address below —'}
+          </div>
+        </div>
+      )}
+
+      {/* ── 2. Coords + apt details + save ── */}
       {value && (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -1605,79 +1660,68 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
               style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
               📍 {lat}, {lon} ↗
             </a>
-            <button onClick={() => { onChange(''); setResolvedName(''); setSavedEntityId(null); }}
+            <button onClick={() => { onChange(''); setResolvedName(''); setSavedId(null); setShowAptDetails(false); }}
               className="text-xs" style={{ color: 'var(--text-muted)' }}>×</button>
           </div>
-          {entityId && !savedEntityId && (
-            <div className="space-y-1">
-              {resolvedName && (
-                <button type="button" onClick={handleSaveAsAddress} disabled={saving}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs disabled:opacity-50 transition-all w-full"
-                  style={{ background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
-                  {saving ? '…' : '📍'}
-                  {saving
-                    ? (lang === 'ru' ? 'Создаю...' : 'Creating...')
-                    : (lang === 'ru' ? 'Создать новую сущность «Адрес»' : 'Create new Address entity')}
+
+          {entityId && showAptDetails && !savedId && (
+            <div className="rounded p-2.5 space-y-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <button type="button" onClick={() => setIsPrivate(v => !v)}
+                  className="w-7 h-3.5 rounded-full flex items-center px-0.5 shrink-0 transition-colors"
+                  style={{ background: isPrivate ? 'var(--accent)' : 'var(--border)' }}>
+                  <div className="w-2.5 h-2.5 rounded-full bg-white transition-transform"
+                    style={{ transform: isPrivate ? 'translateX(14px)' : 'translateX(0)' }} />
                 </button>
-              )}
-              {addressEntities.length > 0 && (
-                <div>
-                  <button type="button" onClick={() => setShowExisting(v => !v)}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs w-full transition-all"
-                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}>
-                    🔗 {lang === 'ru' ? `Привязать к существующему (${addressEntities.length})` : `Link to existing (${addressEntities.length})`}
-                    <span className="ml-auto">{showExisting ? '▲' : '▼'}</span>
-                  </button>
-                  {showExisting && (
-                    <div className="mt-1 rounded overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-                      <div className="p-1 border-b" style={{ borderColor: 'var(--border-light)' }}>
-                        <input
-                          value={addrSearch}
-                          onChange={e => setAddrSearch(e.target.value)}
-                          placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
-                          className="w-full px-2 py-1 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
-                        />
-                      </div>
-                      <div className="max-h-36 overflow-y-auto">
-                        {filteredAddrs.map((e: any) => (
-                          <button key={e.id} type="button"
-                            onClick={() => { linkToAddress(e.id, e.value); setShowExisting(false); }}
-                            className="w-full px-2 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-1.5"
-                            style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                            <span style={{ color: '#a78bfa' }}>📍</span>
-                            <span className="truncate">{e.value}</span>
-                            {(e.metadata as any)?.coordinates && (
-                              <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
-                                {(e.metadata as any).coordinates}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                        {filteredAddrs.length === 0 && (
-                          <p className="px-2 py-1.5 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                            {lang === 'ru' ? 'Не найдено' : 'Not found'}
-                          </p>
-                        )}
-                      </div>
+                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
+                  🏠 {lang === 'ru' ? 'Частный дом' : 'Private house'}
+                </span>
+              </label>
+
+              {!isPrivate && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { key: 'entrance', val: entrance, set: setEntrance, ru: 'Подъезд', en: 'Entrance', t: 'text' },
+                    { key: 'floor', val: floor, set: setFloor, ru: 'Этаж', en: 'Floor', t: 'number' },
+                    { key: 'apartment', val: apartment, set: setApartment, ru: 'Квартира', en: 'Apartment', t: 'text' },
+                    { key: 'intercom', val: intercom, set: setIntercom, ru: 'Домофон', en: 'Intercom', t: 'text' },
+                  ].map(f => (
+                    <div key={f.key}>
+                      <label className="text-[10px] font-mono block mb-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {lang === 'ru' ? f.ru : f.en}
+                      </label>
+                      <input type={f.t} value={f.val} onChange={e => f.set(e.target.value)}
+                        className="w-full px-1.5 py-0.5 rounded font-mono text-xs outline-none border"
+                        style={{ background: 'var(--bg-main)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }} />
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
+
+              <button type="button" onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs w-full disabled:opacity-50 transition-all"
+                style={{ background: '#a78bfa20', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
+                {saving ? '…' : '📍'}
+                {saving
+                  ? (lang === 'ru' ? 'Создаю...' : 'Creating...')
+                  : (lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity')}
+              </button>
             </div>
           )}
-          {savedEntityId && (
+
+          {savedId && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs"
               style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
-              <span>✓</span>
-              <span>{lang === 'ru' ? 'Адрес привязан' : 'Address linked'}</span>
-              <a href={`/entities/${savedEntityId}`}
-                className="ml-auto underline text-[10px]" style={{ color: '#4ade80' }}>
+              <span>✓ {lang === 'ru' ? 'Адрес привязан' : 'Address linked'}</span>
+              <a href={`/entities/${savedId}`} className="ml-auto underline text-[10px]" style={{ color: '#4ade80' }}>
                 {lang === 'ru' ? 'Открыть' : 'Open'} ↗
               </a>
             </div>
           )}
         </div>
       )}
+
+      {/* ── 3. Search input ── */}
       <div className="flex gap-1">
         <input
           value={address}

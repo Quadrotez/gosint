@@ -19,11 +19,15 @@ export default function CreateEntity() {
   const { t, lang } = useLang();
   const { dateLocale } = useSettings();
   const { schemas, allTypeNames, getColor, getIcon, getLabel } = useEntitySchemas();
-  const { data: allEntities = [] } = useQuery<Entity[]>({
+  const { data: allEntities = [] } = useQuery({
     queryKey: ['entities'],
     queryFn: () => getEntities({ limit: 1000 }),
+    staleTime: 30_000,
   });
-  const addressEntities = allEntities.filter(e => e.type === 'address');
+  const addressEntities = (allEntities as any[]).filter((e: any) => e.type === 'address');
+  const [pendingGeoAddress, setPendingGeoAddress] = useState<{
+    name: string; coords: string; existingId?: string; meta?: Record<string, string>;
+  } | null>(null);
 
   const [type, setType] = useState('person');
   const [value, setValue] = useState('');
@@ -72,9 +76,6 @@ export default function CreateEntity() {
     ? [lastName, firstName, middleName].filter(Boolean).join(' ')
     : '';
 
-  // Geo → address entity: queued until parent entity is created
-  const [pendingGeoAddress, setPendingGeoAddress] = useState<{ name: string; coords: string; existingId?: string } | null>(null);
-
   const mutation = useMutation({
     mutationFn: createEntity,
     onSuccess: (entity) => {
@@ -102,19 +103,19 @@ export default function CreateEntity() {
           });
         }
       });
-      // Auto-create (or reuse) address entity from geoposition field if requested
       if (pendingGeoAddress) {
-        const linkAddress = (addrId: string) => {
+        const link = (addrId: string) => {
           createRelationship({ source_entity_id: entity.id, target_entity_id: addrId, type: 'located_at' });
           queryClient.invalidateQueries({ queryKey: ['entities'] });
         };
         if (pendingGeoAddress.existingId) {
-          // User picked an existing address entity — just link it
-          linkAddress(pendingGeoAddress.existingId);
+          link(pendingGeoAddress.existingId);
         } else {
-          createEntity({ type: 'address', value: pendingGeoAddress.name, metadata: { coordinates: pendingGeoAddress.coords } })
-            .then((addrEntity) => linkAddress(addrEntity.id))
-            .catch(() => {});
+          createEntity({
+            type: 'address',
+            value: pendingGeoAddress.name,
+            metadata: pendingGeoAddress.meta || { coordinates: pendingGeoAddress.coords },
+          }).then(a => link(a.id)).catch(() => {});
         }
       }
       navigate(`/entities/${entity.id}`);
@@ -179,38 +180,13 @@ export default function CreateEntity() {
         });
       }
       metaFields.forEach(({ key, value: v }) => { if (key.trim()) m[key.trim()] = v; });
-      if (value.trim()) {
-        entityValue = value.trim();
+      // Auto-compose value for address if not entered
+      if (!value.trim() && type === 'address') {
+        const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k]).filter(Boolean);
+        entityValue = parts.join(', ') || (lang === 'ru' ? 'Адрес' : 'Address');
       } else {
-        // Auto-compose value from schema/preset fields or use type label as fallback
-        if (type === 'address') {
-          const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k] as string).filter(Boolean);
-          entityValue = parts.join(', ');
-        }
-        if (!entityValue) {
-          // Use first non-empty schema/preset field value
-          if (schemaFields) {
-            for (const f of schemaFields) {
-              const v = schemaValues[f.name];
-              if (v && typeof v === 'string' && v.trim() && f.field_type !== 'entity' && f.field_type !== 'entities') {
-                entityValue = v.trim();
-                break;
-              }
-            }
-          } else if (presetFields) {
-            for (const f of presetFields) {
-              const v = schemaValues[f.key];
-              if (v && typeof v === 'string' && v.trim()) {
-                entityValue = v.trim();
-                break;
-              }
-            }
-          }
-        }
-        if (!entityValue) {
-          // Final fallback: type label
-          entityValue = getLabel(type) || type;
-        }
+        if (!value.trim()) return;
+        entityValue = value.trim();
       }
       metadata = Object.keys(m).length > 0 ? m : null;
     }
@@ -221,7 +197,7 @@ export default function CreateEntity() {
   const hasSchemaValues = schemaFields
     ? schemaFields.some(f => schemaValues[f.name]?.trim())
     : (presetFields ? presetFields.some(f => schemaValues[f.key]?.trim()) : false);
-  const canSubmit = true;
+  const canSubmit = isPerson ? true : value.trim().length > 0 || hasSchemaValues;
   const color = getColor(type);
   const customTypes = schemas.filter(s => !s.is_builtin);
 
@@ -396,8 +372,8 @@ export default function CreateEntity() {
                         key={f.name} label={label} required={f.required}
                         value={schemaValues[f.name] || ''}
                         onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
-                        onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
-                        onExistingAddressPicked={(id) => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                        onAddressResolved={(name, coords, meta) => setPendingGeoAddress({ name, coords, meta })}
+                        onExistingAddressPicked={id => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
                         addressEntities={addressEntities}
                         lang={lang}
                       />
@@ -566,17 +542,14 @@ export default function CreateEntity() {
             </div>
 
             <div>
-              <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                {t.ce_value_label}
-                <span className="text-[10px] normal-case" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
-                  ({lang === 'ru' ? 'необязательно' : 'optional'})
-                </span>
+              <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 block">
+                {t.ce_value_label} <span className="text-[#ff4444]">*</span>
               </label>
               <input
                 value={value}
                 onChange={e => setValue(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder={lang === 'ru' ? 'Оставьте пустым — заполнится из полей автоматически' : 'Leave empty — auto-filled from fields'}
+                placeholder={`Enter ${getLabel(type)}...`}
                 className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                 style={{ borderColor: value ? `${color}60` : '' }}
               />
@@ -623,8 +596,8 @@ export default function CreateEntity() {
                           required={f.required}
                           value={schemaValues[f.name] || ''}
                           onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
-                          onAddressResolved={(name, coords) => setPendingGeoAddress({ name, coords })}
-                          onExistingAddressPicked={(id) => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                          onAddressResolved={(name, coords, meta) => setPendingGeoAddress({ name, coords, meta })}
+                          onExistingAddressPicked={id => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
                           addressEntities={addressEntities}
                           lang={lang}
                         />
@@ -997,24 +970,31 @@ function EntitiesFieldPicker({
 interface GeoPositionPickerProps {
   label: string;
   required: boolean;
-  value: string;        // stored as "lat,lon"
+  value: string;
   onChange: (v: string) => void;
-  onAddressResolved?: (displayName: string, coords: string) => void;
-  onExistingAddressPicked?: (existingId: string) => void;
-  addressEntities?: Entity[];  // existing address entities for reuse picker
+  onAddressResolved?: (name: string, coords: string, meta?: Record<string, string>) => void;
+  onExistingAddressPicked?: (id: string) => void;
+  addressEntities?: any[];
   lang: string;
 }
 
-function GeoPositionPicker({ label, required, value, onChange, onAddressResolved, onExistingAddressPicked, addressEntities = [], lang }: GeoPositionPickerProps) {
+function GeoPositionPicker({
+  label, required, value, onChange, onAddressResolved, onExistingAddressPicked, addressEntities = [], lang,
+}: GeoPositionPickerProps) {
   const [address, setAddress] = useState('');
-  const [resolvedName, setResolvedName] = useState('');  // full display_name from Nominatim
+  const [resolvedName, setResolvedName] = useState('');
   const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
-  const [addressSaved, setAddressSaved] = useState(false);
   const [addrSearch, setAddrSearch] = useState('');
-  const [showExisting, setShowExisting] = useState(false);
+  const [addressSaved, setAddressSaved] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [entrance, setEntrance] = useState('');
+  const [floor, setFloor] = useState('');
+  const [apartment, setApartment] = useState('');
+  const [intercom, setIntercom] = useState('');
+  const [showAptForm, setShowAptForm] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [lat, lon] = value ? value.split(',') : ['', ''];
@@ -1022,144 +1002,162 @@ function GeoPositionPicker({ label, required, value, onChange, onAddressResolved
 
   const doSearch = async (q: string) => {
     if (!q.trim()) { setResults([]); setOpen(false); return; }
-    setSearching(true);
-    setError('');
+    setSearching(true); setError('');
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`;
-      const res = await fetch(url, { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } });
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+        { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } }
+      );
       const data = await res.json();
-      setResults(data);
-      setOpen(true);
+      setResults(data); setOpen(true);
       if (data.length === 0) setError(lang === 'ru' ? 'Ничего не найдено' : 'No results found');
-    } catch {
-      setError(lang === 'ru' ? 'Ошибка запроса' : 'Search failed');
-    } finally {
-      setSearching(false);
-    }
+    } catch { setError(lang === 'ru' ? 'Ошибка запроса' : 'Search failed'); }
+    finally { setSearching(false); }
   };
 
   const handleInput = (val: string) => {
-    setAddress(val);
-    setError('');
+    setAddress(val); setError('');
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (val.trim().length >= 3) {
-      debounceRef.current = setTimeout(() => doSearch(val), 400);
-    } else {
-      setResults([]); setOpen(false);
-    }
+    if (val.trim().length >= 3) debounceRef.current = setTimeout(() => doSearch(val), 400);
+    else { setResults([]); setOpen(false); }
   };
 
   const select = (r: { display_name: string; lat: string; lon: string }) => {
     const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
     onChange(coords);
-    setAddress(r.display_name);
-    setResolvedName(r.display_name);
-    setAddressSaved(false);
-    setOpen(false);
-    setResults([]);
+    setAddress(r.display_name); setResolvedName(r.display_name);
+    setAddressSaved(false); setOpen(false); setResults([]);
+    setShowAptForm(true);
   };
 
   const clear = () => {
     onChange(''); setAddress(''); setResolvedName('');
     setResults([]); setOpen(false); setAddressSaved(false);
+    setIsPrivate(false); setEntrance(''); setFloor(''); setApartment(''); setIntercom('');
+    setShowAptForm(false);
   };
 
   const handleSaveAsAddress = () => {
     if (!value || !resolvedName) return;
-    onAddressResolved?.(resolvedName, value);
-    setAddressSaved(true);
+    const meta: Record<string, string> = { coordinates: value, is_private: isPrivate ? 'true' : 'false' };
+    if (!isPrivate) {
+      if (entrance) meta.entrance = entrance;
+      if (floor) meta.floor = floor;
+      if (apartment) meta.apartment = apartment;
+      if (intercom) meta.intercom = intercom;
+    }
+    onAddressResolved?.(resolvedName, value, meta);
+    setAddressSaved(true); setShowAptForm(false);
   };
+
+  const filteredAddrs = addressEntities.filter((e: any) =>
+    !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase())
+  );
 
   return (
     <div>
       <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 flex items-center gap-1">
-        📍 {label}{required && <span className="text-[#ff4444]">*</span>}
+        {'📍'} {label}{required && <span className="text-[#ff4444]">*</span>}
       </label>
 
-      {/* Coords display + OSM link + Save as address */}
+      {/* 1. Existing addresses shown first */}
+      {onAddressResolved && addressEntities.length > 0 && !addressSaved && (
+        <div className="mb-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+          <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-light)' }}>
+            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ru' ? '🔗 Существующие адреса' : '🔗 Existing addresses'}
+            </span>
+            <input value={addrSearch} onChange={e => setAddrSearch(e.target.value)}
+              placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
+              className="ml-auto w-28 px-2 py-0.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
+            />
+          </div>
+          <div className="max-h-32 overflow-y-auto">
+            {filteredAddrs.map((e: any) => (
+              <button key={e.id} type="button"
+                onClick={() => { onExistingAddressPicked?.(e.id); setAddressSaved(true); }}
+                className="w-full px-3 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
+                style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                <span style={{ color: '#a78bfa' }}>📍</span>
+                <span className="truncate">{e.value}</span>
+                {(e.metadata as any)?.apartment && (
+                  <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                    {lang === 'ru' ? 'кв.' : 'apt.'} {(e.metadata as any).apartment}
+                  </span>
+                )}
+                {(e.metadata as any)?.is_private === 'true' && (
+                  <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>🏠</span>
+                )}
+              </button>
+            ))}
+            {filteredAddrs.length === 0 && (
+              <p className="px-3 py-2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Не найдено' : 'Not found'}
+              </p>
+            )}
+          </div>
+          <div className="px-3 py-1 border-t text-center text-[10px] font-mono" style={{ borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
+            {lang === 'ru' ? '— или найдите новый адрес ниже —' : '— or search for a new address below —'}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Coords + apartment form */}
       {value && (
         <div className="mb-2 space-y-1.5">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono"
             style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
             <span style={{ color: 'var(--accent)' }}>📌 {value}</span>
             <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
-              className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>
-              OSM ↗
-            </a>
+              className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>OSM ↗</a>
             <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
           </div>
-          {onAddressResolved && !addressSaved && (
-            <div className="space-y-1.5">
-              {/* Create new address entity */}
-              <button
-                type="button"
-                onClick={handleSaveAsAddress}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all w-full"
-                style={{ background: 'var(--bg-secondary)', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
-                📍 {lang === 'ru' ? 'Создать новую сущность «Адрес»' : 'Create new Address entity'}
-              </button>
 
-              {/* Pick existing address entity */}
-              {addressEntities.length > 0 && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setShowExisting(v => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all w-full"
-                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}>
-                    🔗 {lang === 'ru' ? `Связать с существующим адресом (${addressEntities.length})` : `Link to existing address (${addressEntities.length})`}
-                    <span className="ml-auto">{showExisting ? '▲' : '▼'}</span>
-                  </button>
-                  {showExisting && (
-                    <div className="mt-1 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-                      <div className="p-1.5 border-b" style={{ borderColor: 'var(--border-light)' }}>
-                        <input
-                          value={addrSearch}
-                          onChange={e => setAddrSearch(e.target.value)}
-                          placeholder={lang === 'ru' ? 'Поиск по адресам...' : 'Search addresses...'}
-                          className="w-full px-2 py-1 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
-                        />
-                      </div>
-                      <div className="max-h-40 overflow-y-auto">
-                        {addressEntities
-                          .filter(e => !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase()))
-                          .map(e => (
-                            <button
-                              key={e.id}
-                              type="button"
-                              onClick={() => {
-                                onExistingAddressPicked?.(e.id);
-                                setAddressSaved(true);
-                                setShowExisting(false);
-                              }}
-                              className="w-full px-3 py-2 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
-                              style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                              <span style={{ color: '#a78bfa' }}>📍</span>
-                              <span className="truncate">{e.value}</span>
-                              {(e.metadata as any)?.coordinates && (
-                                <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
-                                  {(e.metadata as any).coordinates}
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        {addressEntities.filter(e => !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase())).length === 0 && (
-                          <p className="px-3 py-2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                            {lang === 'ru' ? 'Не найдено' : 'Not found'}
-                          </p>
-                        )}
-                      </div>
+          {onAddressResolved && showAptForm && !addressSaved && (
+            <div className="rounded-lg p-3 space-y-2.5" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button type="button" onClick={() => setIsPrivate(v => !v)}
+                  className="w-8 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0"
+                  style={{ background: isPrivate ? 'var(--accent)' : 'var(--border)' }}>
+                  <div className="w-3 h-3 rounded-full bg-white transition-transform"
+                    style={{ transform: isPrivate ? 'translateX(16px)' : 'translateX(0)' }} />
+                </button>
+                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
+                  🏠 {lang === 'ru' ? 'Частный дом' : 'Private house'}
+                </span>
+              </label>
+
+              {!isPrivate && (
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { k: 'entrance', lbl: lang === 'ru' ? 'Подъезд' : 'Entrance', v: entrance, fn: setEntrance, t: 'text' },
+                    { k: 'floor',    lbl: lang === 'ru' ? 'Этаж' : 'Floor',       v: floor,    fn: setFloor,    t: 'number' },
+                    { k: 'apt',      lbl: lang === 'ru' ? 'Квартира' : 'Apt',     v: apartment, fn: setApartment, t: 'text' },
+                    { k: 'intercom', lbl: lang === 'ru' ? 'Домофон' : 'Intercom', v: intercom, fn: setIntercom, t: 'text' },
+                  ].map(f => (
+                    <div key={f.k}>
+                      <label className="text-[10px] font-mono block mb-0.5" style={{ color: 'var(--text-muted)' }}>{f.lbl}</label>
+                      <input type={f.t} value={f.v} onChange={e => f.fn(e.target.value)}
+                        className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
+                        style={{ background: 'var(--bg-main)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }} />
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
+
+              <button type="button" onClick={handleSaveAsAddress}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs w-full"
+                style={{ background: '#a78bfa20', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
+                📍 {lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity'}
+              </button>
             </div>
           )}
+
           {addressSaved && (
             <div className="flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-xs"
               style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
               <span>✓ {lang === 'ru' ? 'Адрес будет привязан' : 'Address will be linked'}</span>
-              <button type="button" onClick={() => { setAddressSaved(false); setShowExisting(false); }}
+              <button type="button" onClick={() => { setAddressSaved(false); setShowAptForm(true); }}
                 className="text-[10px] underline" style={{ color: '#4ade80' }}>
                 {lang === 'ru' ? 'отмена' : 'undo'}
               </button>
@@ -1168,24 +1166,19 @@ function GeoPositionPicker({ label, required, value, onChange, onAddressResolved
         </div>
       )}
 
-      {/* Search input with inline spinner */}
+      {/* 3. Search input */}
       <div className="relative">
-        <input
-          value={address}
-          onChange={e => handleInput(e.target.value)}
+        <input value={address} onChange={e => handleInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && doSearch(address)}
           placeholder={lang === 'ru' ? 'Введите адрес (минимум 3 символа)...' : 'Type address (min 3 chars)...'}
           className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
           style={{ paddingRight: searching ? '2.5rem' : undefined }}
         />
-        {searching && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>…</span>
-        )}
+        {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>…</span>}
       </div>
 
       {error && <p className="mt-1 text-xs font-mono" style={{ color: '#f87171' }}>{error}</p>}
 
-      {/* Results dropdown */}
       {open && results.length > 0 && (
         <div className="mt-1 rounded-lg overflow-hidden shadow-xl"
           style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
@@ -1206,9 +1199,7 @@ function GeoPositionPicker({ label, required, value, onChange, onAddressResolved
       )}
 
       <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-        {lang === 'ru'
-          ? 'Данные геолокации © OpenStreetMap'
-          : 'Geocoding data © OpenStreetMap contributors'}
+        {lang === 'ru' ? 'Данные геолокации © OpenStreetMap' : 'Geocoding data © OpenStreetMap contributors'}
       </p>
     </div>
   );

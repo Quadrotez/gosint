@@ -404,7 +404,6 @@ export default function EntityTypesPage() {
                                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
                                 <option value="this_to_other">{lang === 'ru' ? 'Эта → Другая' : 'This → Other'}</option>
                                 <option value="other_to_this">{lang === 'ru' ? 'Другая → Эта' : 'Other → This'}</option>
-                                <option value="bidirectional">{lang === 'ru' ? 'Двухсторонняя' : 'Bidirectional'}</option>
                               </select>
                             </div>
                             <div>
