@@ -1577,6 +1577,15 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
     try {
       await createRelationship({ source_entity_id: entityId, target_entity_id: addrId, type: 'located_at' });
       setSavedId(addrId);
+      // Populate the geo field with the address entity's coordinates
+      const addrEntity = (addressEntities as any[]).find((e: any) => e.id === addrId);
+      if (addrEntity) {
+        const coords = ((addrEntity.metadata || {}) as Record<string, string>).coordinates || '';
+        if (coords) {
+          onChange(coords);
+          setQuery(addrEntity.value || coords);
+        }
+      }
       qc.invalidateQueries({ queryKey: ['entities'] });
       qc.invalidateQueries({ queryKey: ['relationships', entityId] });
     } catch {/* ignore */}

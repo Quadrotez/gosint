@@ -373,7 +373,7 @@ export default function CreateEntity() {
                         value={schemaValues[f.name] || ''}
                         onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
                         onAddressResolved={(name, coords, meta) => setPendingGeoAddress({ name, coords, meta })}
-                        onExistingAddressPicked={id => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                        onExistingAddressPicked={(id) => { const e = addressEntities.find((a: any) => a.id === id); const coords = e ? ((e.metadata||{}) as any).coordinates || '' : ''; setPendingGeoAddress({ name: e?.value || '', coords, existingId: id }); }}
                         addressEntities={addressEntities}
                         lang={lang}
                       />
@@ -597,7 +597,7 @@ export default function CreateEntity() {
                           value={schemaValues[f.name] || ''}
                           onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
                           onAddressResolved={(name, coords, meta) => setPendingGeoAddress({ name, coords, meta })}
-                          onExistingAddressPicked={id => setPendingGeoAddress({ name: '', coords: '', existingId: id })}
+                          onExistingAddressPicked={(id) => { const e = addressEntities.find((a: any) => a.id === id); const coords = e ? ((e.metadata||{}) as any).coordinates || '' : ''; setPendingGeoAddress({ name: e?.value || '', coords, existingId: id }); }}
                           addressEntities={addressEntities}
                           lang={lang}
                         />
@@ -1065,6 +1065,13 @@ function GeoPositionPicker({
   };
 
   const pickExisting = (id: string) => {
+    // Also populate the geo field with the existing entity's coordinates
+    const entity = addressEntities.find((e: any) => e.id === id);
+    const coords = entity ? ((entity.metadata || {}) as Record<string, string>).coordinates || '' : '';
+    if (coords) {
+      onChange(coords);
+      setQuery(entity.value || '');
+    }
     onExistingAddressPicked?.(id);
     setLinked(true);
   };
