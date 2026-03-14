@@ -4,18 +4,22 @@ import zipfile
 import base64
 import re
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from ..database import get_db
 from .. import models, crud
 from ..deps import get_current_user
-from ..encryption import decrypt_field, is_encrypted, encrypt_field
+from ..encryption import decrypt_field, is_encrypted
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 
 BACKUP_VERSION = "3.0"
 
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _decrypt_opt(key, value):
     if key and value and is_encrypted(value):
@@ -95,6 +99,17 @@ def _group_to_dict(g: models.EntityGroup) -> dict:
     }
 
 
+def _fields_match(stored_fields_json: Optional[str], imported_fields: list) -> bool:
+    """Check if stored field definitions are identical to imported ones."""
+    try:
+        stored = json.loads(stored_fields_json) if stored_fields_json else []
+    except Exception:
+        stored = []
+    def canon(lst):
+        return json.dumps(sorted(lst, key=lambda x: x.get("name", "")), sort_keys=True)
+    return canon(stored) == canon(imported_fields)
+
+
 # ── Export ────────────────────────────────────────────────────────────────────
 
 @router.get("/export")
@@ -102,8 +117,6 @@ def export_backup(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Full export: entities, relationships, entity-type schemas,
-    relationship-type schemas, entity groups — all in one ZIP."""
     dec_key = crud._get_enc_key(user)
 
     entities      = db.query(models.Entity).filter(models.Entity.user_id == user.id).all()
@@ -112,14 +125,13 @@ def export_backup(
     rel_schemas   = db.query(models.RelationshipTypeSchema).filter(models.RelationshipTypeSchema.user_id == user.id).all()
     groups        = db.query(models.EntityGroup).filter(models.EntityGroup.user_id == user.id).all()
 
-    entities_data   = [_entity_to_dict(e, dec_key)      for e in entities]
-    rels_data       = [_rel_to_dict(r, dec_key)          for r in relationships]
-    ent_schemas_data = [_schema_to_dict(s)               for s in ent_schemas]
-    rel_schemas_data = [_rel_type_schema_to_dict(s)      for s in rel_schemas]
-    groups_data     = [_group_to_dict(g)                 for g in groups]
+    entities_data    = [_entity_to_dict(e, dec_key)      for e in entities]
+    rels_data        = [_rel_to_dict(r, dec_key)          for r in relationships]
+    ent_schemas_data = [_schema_to_dict(s)                for s in ent_schemas]
+    rel_schemas_data = [_rel_type_schema_to_dict(s)       for s in rel_schemas]
+    groups_data      = [_group_to_dict(g)                 for g in groups]
 
-    # Extract embedded photos to separate files (keep data.json small)
-    photos: dict[str, str] = {}
+    photos = {}
     for e_dict in entities_data:
         photo = e_dict.get("metadata", {}).get("photo", "")
         if photo and photo.startswith("data:image"):
@@ -134,8 +146,7 @@ def export_backup(
         "entity_type_schemas": ent_schemas_data,
         "relationship_type_schemas": rel_schemas_data,
         "entity_groups": groups_data,
-        # backward-compat alias
-        "schemas": ent_schemas_data,
+        "schemas": ent_schemas_data,   # backward-compat alias
     }
 
     buf = io.BytesIO()
@@ -156,19 +167,7 @@ def export_backup(
     )
 
 
-# ── Smart Import ──────────────────────────────────────────────────────────────
-
-def _fields_match(stored_fields_json: str | None, imported_fields: list) -> bool:
-    """Check if stored field definitions are identical to imported ones."""
-    try:
-        stored = json.loads(stored_fields_json) if stored_fields_json else []
-    except Exception:
-        stored = []
-    # Compare by serialising to canonical JSON
-    def canon(lst):
-        return json.dumps(sorted(lst, key=lambda x: x.get("name", "")), sort_keys=True)
-    return canon(stored) == canon(imported_fields)
-
+# ── Import ────────────────────────────────────────────────────────────────────
 
 @router.post("/import")
 async def import_backup(
@@ -176,18 +175,6 @@ async def import_backup(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """
-    Smart full-restore import.
-
-    Rules:
-    - Entity-type schemas: if name exists AND fields match → skip.
-      If name exists but fields differ → overwrite. New name → create.
-    - Relationship-type schemas: same logic.
-    - Entities: if ID already in DB → skip (preserves existing data).
-      New ID → create and encrypt.
-    - Relationships: if ID exists → skip. New → create (only if both endpoints exist).
-    - Entity groups: if ID exists → skip; new → create.
-    """
     if not (file.filename or "").endswith(".zip"):
         raise HTTPException(status_code=400, detail="File must be a .zip backup")
 
@@ -202,16 +189,19 @@ async def import_backup(
 
     data = json.loads(zf.read("data.json").decode("utf-8"))
 
-    # Restore photo map
-    photo_map: dict[str, str] = {}
+    # Restore photos
+    photo_map = {}
     for name in zf.namelist():
         if name.startswith("photos/"):
-            entity_id = name.split("/")[1].rsplit(".", 1)[0]
+            eid = name.split("/")[1].rsplit(".", 1)[0]
             ext = name.rsplit(".", 1)[-1]
             b64 = base64.b64encode(zf.read(name)).decode()
-            photo_map[entity_id] = f"data:image/{ext};base64,{b64}"
+            photo_map[eid] = f"data:image/{ext};base64,{b64}"
 
+    # We need the user_id as a plain string — capture it before any commits
+    user_id = str(user.id)
     enc_key = crud._get_enc_key(user)
+
     stats = {
         "entity_type_schemas": 0,
         "relationship_type_schemas": 0,
@@ -221,17 +211,16 @@ async def import_backup(
         "skipped": 0,
         "overwritten": 0,
     }
+    errors = []
 
     # ── Entity Type Schemas ──────────────────────────────────────────────────
-    # Support both new key and v2 backup alias
     ent_schemas_import = data.get("entity_type_schemas") or data.get("schemas") or []
     existing_ent_schemas = {
         s.name: s for s in db.query(models.EntityTypeSchema)
-        .filter(models.EntityTypeSchema.user_id == user.id).all()
+        .filter(models.EntityTypeSchema.user_id == user_id).all()
     }
     for s in ent_schemas_import:
         if s.get("is_builtin"):
-            stats["skipped"] += 1
             continue
         imported_fields = s.get("fields") or []
         if isinstance(imported_fields, str):
@@ -245,19 +234,18 @@ async def import_backup(
             if _fields_match(existing.fields, imported_fields):
                 stats["skipped"] += 1
                 continue
-            # Overwrite — fields differ
-            existing.label_en    = s.get("label_en", existing.label_en)
-            existing.label_ru    = s.get("label_ru") or existing.label_ru
-            existing.icon        = s.get("icon") or existing.icon
-            existing.color       = s.get("color") or existing.color
-            existing.icon_image  = s.get("icon_image") or existing.icon_image
-            existing.fields      = json.dumps(imported_fields)
-            db.commit()
+            existing.label_en   = s.get("label_en", existing.label_en)
+            existing.label_ru   = s.get("label_ru") or existing.label_ru
+            existing.icon       = s.get("icon") or existing.icon
+            existing.color      = s.get("color") or existing.color
+            existing.icon_image = s.get("icon_image") or existing.icon_image
+            existing.fields     = json.dumps(imported_fields)
+            db.flush()
             stats["overwritten"] += 1
         else:
             db.add(models.EntityTypeSchema(
                 id=s["id"],
-                user_id=user.id,
+                user_id=user_id,
                 name=s["name"],
                 label_en=s["label_en"],
                 label_ru=s.get("label_ru"),
@@ -267,42 +255,37 @@ async def import_backup(
                 fields=json.dumps(imported_fields) if imported_fields else None,
                 is_builtin=False,
             ))
-            try:
-                db.commit()
-                stats["entity_type_schemas"] += 1
-            except Exception:
-                db.rollback()
+            db.flush()
+            stats["entity_type_schemas"] += 1
 
     # ── Relationship Type Schemas ────────────────────────────────────────────
     rel_schemas_import = data.get("relationship_type_schemas") or []
     existing_rel_schemas = {
         s.name: s for s in db.query(models.RelationshipTypeSchema)
-        .filter(models.RelationshipTypeSchema.user_id == user.id).all()
+        .filter(models.RelationshipTypeSchema.user_id == user_id).all()
     }
     for s in rel_schemas_import:
         if s.get("is_builtin"):
-            stats["skipped"] += 1
             continue
         imported_fields = s.get("fields") or []
-
         existing = existing_rel_schemas.get(s["name"])
         if existing:
             if _fields_match(existing.fields, imported_fields):
                 stats["skipped"] += 1
                 continue
-            existing.label_en       = s.get("label_en", existing.label_en)
-            existing.label_ru       = s.get("label_ru") or existing.label_ru
-            existing.description    = s.get("description") or existing.description
-            existing.emoji          = s.get("emoji") or existing.emoji
-            existing.color          = s.get("color") or existing.color
+            existing.label_en        = s.get("label_en", existing.label_en)
+            existing.label_ru        = s.get("label_ru") or existing.label_ru
+            existing.description     = s.get("description") or existing.description
+            existing.emoji           = s.get("emoji") or existing.emoji
+            existing.color           = s.get("color") or existing.color
             existing.is_bidirectional = s.get("is_bidirectional", existing.is_bidirectional)
-            existing.fields         = json.dumps(imported_fields) if imported_fields else None
-            db.commit()
+            existing.fields          = json.dumps(imported_fields) if imported_fields else None
+            db.flush()
             stats["overwritten"] += 1
         else:
             db.add(models.RelationshipTypeSchema(
                 id=s["id"],
-                user_id=user.id,
+                user_id=user_id,
                 name=s["name"],
                 label_en=s["label_en"],
                 label_ru=s.get("label_ru"),
@@ -313,19 +296,48 @@ async def import_backup(
                 is_bidirectional=s.get("is_bidirectional", False),
                 is_builtin=False,
             ))
-            try:
-                db.commit()
-                stats["relationship_type_schemas"] += 1
-            except Exception:
-                db.rollback()
+            db.flush()
+            stats["relationship_type_schemas"] += 1
 
-    # ── Entities ─────────────────────────────────────────────────────────────
-    existing_ids = {row[0] for row in db.query(models.Entity.id).all()}
+    # ── Entities ──────────────────────────────────────────────────────────────
+    #
+    # Three cases for each entity ID from the backup:
+    #   1. ID not in DB at all         → insert with original ID
+    #   2. ID exists, owned by ME      → skip (already imported earlier)
+    #   3. ID exists, owned by someone else → generate a fresh UUID, insert with new ID
+    #
+    # id_remap maps backup_id → actual_id_in_db so relationships use the right IDs.
+
+    import uuid as _uuid_mod
+
+    # Load (id → user_id) for all existing entities
+    existing_entities_map = {row[0]: row[1] for row in db.execute(text("SELECT id, user_id FROM entities"))}
+    # Track which backup IDs were successfully imported (or already mine) for rel linking
+    # Maps backup_original_id → actual_id_used_in_this_db
+    id_remap: dict = {}
+
     for e in data.get("entities", []):
-        if e["id"] in existing_ids:
+        eid = e.get("id")
+        if not eid:
+            continue
+
+        owner = existing_entities_map.get(eid)
+
+        if owner == user_id:
+            # Already mine — skip, but record mapping so rels still work
+            id_remap[eid] = eid
             stats["skipped"] += 1
             continue
 
+        # Pick the ID to use in the DB
+        if owner is not None:
+            # Taken by another user — mint a new UUID
+            actual_id = str(_uuid_mod.uuid4())
+        else:
+            # Free — use original
+            actual_id = eid
+
+        # Restore photo
         meta = e.get("metadata") or {}
         if isinstance(meta.get("photo"), str) and meta["photo"].startswith("__photo__"):
             original_id = meta["photo"].replace("__photo__", "")
@@ -336,86 +348,155 @@ async def import_backup(
                 meta.pop("photo", None)
 
         meta_json = json.dumps(meta, ensure_ascii=False) if meta else None
-        value = e.get("value") or ""
-        notes = e.get("notes") or None
+        value     = e.get("value") or ""
+        notes     = e.get("notes") or None
+        canvas    = e.get("canvas_layout") or None
 
-        new_e = models.Entity(
-            id=e["id"],
-            user_id=user.id,
-            type=e["type"],
-            value=crud._enc(enc_key, value),
-            metadata_=crud._enc(enc_key, meta_json) if meta_json else None,
-            notes=crud._enc(enc_key, notes) if notes else None,
-            canvas_layout=e.get("canvas_layout") or None,
-        )
+        enc_value = crud._enc(enc_key, value)
+        enc_meta  = crud._enc(enc_key, meta_json) if meta_json else None
+        enc_notes = crud._enc(enc_key, notes) if notes else None
+
+        created_at = datetime.utcnow()
         if e.get("created_at"):
             try:
-                new_e.created_at = datetime.fromisoformat(e["created_at"])
+                created_at = datetime.fromisoformat(e["created_at"])
             except Exception:
                 pass
+
         try:
-            db.add(new_e)
+            db.execute(text("""
+                INSERT INTO entities
+                    (id, user_id, type, value, metadata, notes, canvas_layout, created_at)
+                VALUES
+                    (:id, :user_id, :type, :value, :metadata, :notes, :canvas_layout, :created_at)
+            """), {
+                "id":            actual_id,
+                "user_id":       user_id,
+                "type":          e["type"],
+                "value":         enc_value,
+                "metadata":      enc_meta,
+                "notes":         enc_notes,
+                "canvas_layout": canvas,
+                "created_at":    created_at,
+            })
             db.commit()
+            id_remap[eid] = actual_id
+            existing_entities_map[actual_id] = user_id
             stats["entities"] += 1
-        except Exception:
+        except Exception as exc:
+            errors.append(f"entity {eid[:8]}: {exc}")
             db.rollback()
 
-    # ── Relationships ─────────────────────────────────────────────────────────
-    existing_rel_ids  = {row[0] for row in db.query(models.Relationship.id).all()}
-    all_entity_ids    = {row[0] for row in db.query(models.Entity.id).all()}
+    # ── Relationships ──────────────────────────────────────────────────────────
+    # Use remapped IDs so relationships point to the correct entities in this DB.
+
+    existing_rels_map = {row[0]: row[1] for row in db.execute(text("SELECT id, user_id FROM relationships"))}
+
     for r in data.get("relationships", []):
-        if r["id"] in existing_rel_ids:
+        rid = r.get("id")
+        if not rid:
+            continue
+
+        # Remap source/target through id_remap
+        src_orig = r.get("source_entity_id")
+        tgt_orig = r.get("target_entity_id")
+        src = id_remap.get(src_orig, src_orig)
+        tgt = id_remap.get(tgt_orig, tgt_orig)
+
+        # Skip if endpoints weren't successfully imported
+        if src not in existing_entities_map or tgt not in existing_entities_map:
             stats["skipped"] += 1
             continue
-        if r["source_entity_id"] not in all_entity_ids or r["target_entity_id"] not in all_entity_ids:
+
+        owner = existing_rels_map.get(rid)
+        if owner == user_id:
             stats["skipped"] += 1
             continue
-        notes = r.get("notes") or None
-        new_r = models.Relationship(
-            id=r["id"],
-            user_id=user.id,
-            source_entity_id=r["source_entity_id"],
-            target_entity_id=r["target_entity_id"],
-            type=r["type"],
-            notes=crud._enc(enc_key, notes) if notes else None,
-        )
+
+        # If RID taken by another user, mint a new one
+        actual_rid = rid if owner is None else str(_uuid_mod.uuid4())
+
+        notes     = r.get("notes") or None
+        enc_notes = crud._enc(enc_key, notes) if notes else None
+
+        created_at = datetime.utcnow()
         if r.get("created_at"):
             try:
-                new_r.created_at = datetime.fromisoformat(r["created_at"])
+                created_at = datetime.fromisoformat(r["created_at"])
             except Exception:
                 pass
+
         try:
-            db.add(new_r)
+            db.execute(text("""
+                INSERT INTO relationships
+                    (id, user_id, source_entity_id, target_entity_id, type, notes, created_at)
+                VALUES
+                    (:id, :user_id, :src, :tgt, :type, :notes, :created_at)
+            """), {
+                "id":         actual_rid,
+                "user_id":    user_id,
+                "src":        src,
+                "tgt":        tgt,
+                "type":       r["type"],
+                "notes":      enc_notes,
+                "created_at": created_at,
+            })
             db.commit()
+            existing_rels_map[actual_rid] = user_id
             stats["relationships"] += 1
-        except Exception:
+        except Exception as exc:
+            errors.append(f"rel {rid[:8]}: {exc}")
             db.rollback()
 
-    # ── Entity Groups ─────────────────────────────────────────────────────────
-    existing_group_ids = {row[0] for row in db.query(models.EntityGroup.id).all()}
+    # ── Entity Groups ──────────────────────────────────────────────────────────
+    existing_groups_map = {row[0]: row[1] for row in db.execute(text("SELECT id, user_id FROM entity_groups"))}
     for g in data.get("entity_groups", []):
-        if g["id"] in existing_group_ids:
+        gid = g.get("id")
+        if not gid:
+            continue
+
+        owner = existing_groups_map.get(gid)
+        if owner == user_id:
             stats["skipped"] += 1
             continue
-        entity_ids_list = g.get("entity_ids") or []
-        new_g = models.EntityGroup(
-            id=g["id"],
-            user_id=user.id,
-            name=g["name"],
-            description=g.get("description") or None,
-            entity_ids=json.dumps(entity_ids_list),
-        )
+
+        actual_gid = gid if owner is None else str(_uuid_mod.uuid4())
+
+        # Remap entity_ids through id_remap
+        raw_eids = g.get("entity_ids") or []
+        remapped_eids = [id_remap.get(i, i) for i in raw_eids]
+
+        created_at = datetime.utcnow()
         if g.get("created_at"):
             try:
-                new_g.created_at = datetime.fromisoformat(g["created_at"])
-                new_g.updated_at = new_g.created_at
+                created_at = datetime.fromisoformat(g["created_at"])
             except Exception:
                 pass
         try:
-            db.add(new_g)
+            db.execute(text("""
+                INSERT INTO entity_groups
+                    (id, user_id, name, description, entity_ids, created_at, updated_at)
+                VALUES (:id, :uid, :name, :desc, :eids, :ca, :ua)
+            """), {
+                "id":   actual_gid,
+                "uid":  user_id,
+                "name": g["name"],
+                "desc": g.get("description"),
+                "eids": json.dumps(remapped_eids),
+                "ca":   created_at,
+                "ua":   created_at,
+            })
             db.commit()
             stats["entity_groups"] += 1
-        except Exception:
+        except Exception as exc:
+            errors.append(f"group {gid[:8]}: {exc}")
             db.rollback()
 
-    return {"success": True, "imported": stats}
+    # One final commit for all ORM changes (schemas)
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        errors.append(f"final commit: {exc}")
+
+    return {"success": True, "imported": stats, "errors": errors}

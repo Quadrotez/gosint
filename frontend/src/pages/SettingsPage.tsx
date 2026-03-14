@@ -201,6 +201,11 @@ export default function SettingsPage() {
       if (s.entity_groups)             parts.push(lang === 'ru' ? `${s.entity_groups} групп`   : `${s.entity_groups} groups`);
       const skipped = s.skipped ? (lang === 'ru' ? ` (пропущено: ${s.skipped}, перезаписано: ${s.overwritten || 0})` : ` (skipped: ${s.skipped}, overwritten: ${s.overwritten || 0})`) : '';
       toast.success((lang === 'ru' ? 'Импортировано: ' : 'Imported: ') + (parts.join(', ') || '0') + skipped);
+      // Show errors if any were captured
+      const errs = (result as any).errors as string[] | undefined;
+      if (errs && errs.length > 0) {
+        toast.error((lang === 'ru' ? 'Ошибки при импорте: ' : 'Import errors: ') + errs.slice(0, 3).join('; '));
+      }
     } catch { toast.error(lang === 'ru' ? 'Ошибка импорта' : 'Import failed'); }
     finally { setBackupLoading(false); }
   };

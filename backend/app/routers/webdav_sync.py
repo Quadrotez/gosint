@@ -135,7 +135,10 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session, user: models.User) -> dict:
         except Exception:
             db.rollback()
 
-    existing_ids = {row[0] for row in db.query(models.Entity.id).all()}
+    existing_ids = {
+        row[0] for row in
+        db.query(models.Entity.id).filter(models.Entity.user_id == user.id).all()
+    }
     for e in data.get("entities", []):
         if e["id"] in existing_ids:
             stats["skipped"] += 1
@@ -162,11 +165,18 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session, user: models.User) -> dict:
             except: pass
         try:
             db.add(new_e); db.commit(); stats["entities"] += 1
+            existing_ids.add(e["id"])
         except Exception:
             db.rollback()
 
-    existing_rel_ids = {row[0] for row in db.query(models.Relationship.id).all()}
-    all_entity_ids = {row[0] for row in db.query(models.Entity.id).all()}
+    existing_rel_ids = {
+        row[0] for row in
+        db.query(models.Relationship.id).filter(models.Relationship.user_id == user.id).all()
+    }
+    all_entity_ids = {
+        row[0] for row in
+        db.query(models.Entity.id).filter(models.Entity.user_id == user.id).all()
+    }
     for r in data.get("relationships", []):
         if r["id"] in existing_rel_ids:
             stats["skipped"] += 1
