@@ -12,6 +12,8 @@ interface SettingsContextType {
   dateLocale: DateLocale;
   setDateLocale: (l: DateLocale) => void;
   formatDate: (dateStr: string) => string;
+  smartParse: boolean;
+  setSmartParse: (v: boolean) => void;
 }
 
 const SettingsCtx = createContext<SettingsContextType>({
@@ -22,6 +24,8 @@ const SettingsCtx = createContext<SettingsContextType>({
   dateLocale: 'dmy',
   setDateLocale: () => {},
   formatDate: (d) => d,
+  smartParse: true,
+  setSmartParse: () => {},
 });
 
 function formatRelative(dateStr: string, lang: string): string {
@@ -89,10 +93,14 @@ export function SettingsProvider({ children, lang }: { children: ReactNode; lang
   const [dateLocale, setDateLocaleState] = useState<DateLocale>(
     () => (localStorage.getItem('osint_date_locale') as DateLocale) || 'dmy'
   );
+  const [smartParse, setSmartParseState] = useState<boolean>(
+    () => localStorage.getItem('osint_smart_parse') !== 'false'
+  );
 
   const setTheme = (t: Theme) => { setThemeState(t); localStorage.setItem('osint_theme', t); };
   const setDateFormat = (f: DateFormat) => { setDateFormatState(f); localStorage.setItem('osint_date_format', f); };
   const setDateLocale = (l: DateLocale) => { setDateLocaleState(l); localStorage.setItem('osint_date_locale', l); };
+  const setSmartParse = (v: boolean) => { setSmartParseState(v); localStorage.setItem('osint_smart_parse', String(v)); };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -113,7 +121,7 @@ export function SettingsProvider({ children, lang }: { children: ReactNode; lang
   };
 
   return (
-    <SettingsCtx.Provider value={{ theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate }}>
+    <SettingsCtx.Provider value={{ theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate, smartParse, setSmartParse }}>
       {children}
     </SettingsCtx.Provider>
   );

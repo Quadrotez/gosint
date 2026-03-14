@@ -212,3 +212,119 @@ export function randomColor(): string {
   ];
   return p[Math.floor(Math.random() * p.length)];
 }
+
+// ── Smart Parse ───────────────────────────────────────────────────────────────
+
+const PHONE_COUNTRY_CODES: { code: string; en: string; ru: string }[] = [
+  { code: '380',  en: 'Ukraine',             ru: 'Украина' },
+  { code: '375',  en: 'Belarus',             ru: 'Беларусь' },
+  { code: '374',  en: 'Armenia',             ru: 'Армения' },
+  { code: '994',  en: 'Azerbaijan',          ru: 'Азербайджан' },
+  { code: '995',  en: 'Georgia',             ru: 'Грузия' },
+  { code: '996',  en: 'Kyrgyzstan',          ru: 'Киргизия' },
+  { code: '998',  en: 'Uzbekistan',          ru: 'Узбекистан' },
+  { code: '992',  en: 'Tajikistan',          ru: 'Таджикистан' },
+  { code: '993',  en: 'Turkmenistan',        ru: 'Туркменистан' },
+  { code: '372',  en: 'Estonia',             ru: 'Эстония' },
+  { code: '371',  en: 'Latvia',              ru: 'Латвия' },
+  { code: '370',  en: 'Lithuania',           ru: 'Литва' },
+  { code: '373',  en: 'Moldova',             ru: 'Молдова' },
+  { code: '420',  en: 'Czech Republic',      ru: 'Чехия' },
+  { code: '421',  en: 'Slovakia',            ru: 'Словакия' },
+  { code: '359',  en: 'Bulgaria',            ru: 'Болгария' },
+  { code: '381',  en: 'Serbia',              ru: 'Сербия' },
+  { code: '385',  en: 'Croatia',             ru: 'Хорватия' },
+  { code: '386',  en: 'Slovenia',            ru: 'Словения' },
+  { code: '880',  en: 'Bangladesh',          ru: 'Бангладеш' },
+  { code: '234',  en: 'Nigeria',             ru: 'Нигерия' },
+  { code: '254',  en: 'Kenya',               ru: 'Кения' },
+  { code: '251',  en: 'Ethiopia',            ru: 'Эфиопия' },
+  { code: '972',  en: 'Israel',              ru: 'Израиль' },
+  { code: '971',  en: 'UAE',                 ru: 'ОАЭ' },
+  { code: '966',  en: 'Saudi Arabia',        ru: 'Саудовская Аравия' },
+  { code: '962',  en: 'Jordan',              ru: 'Иордания' },
+  { code: '961',  en: 'Lebanon',             ru: 'Ливан' },
+  { code: '964',  en: 'Iraq',                ru: 'Ирак' },
+  { code: '7',    en: 'Russia / Kazakhstan', ru: 'Россия / Казахстан' },
+  { code: '1',    en: 'USA / Canada',        ru: 'США / Канада' },
+  { code: '44',   en: 'United Kingdom',      ru: 'Великобритания' },
+  { code: '49',   en: 'Germany',             ru: 'Германия' },
+  { code: '33',   en: 'France',              ru: 'Франция' },
+  { code: '39',   en: 'Italy',               ru: 'Италия' },
+  { code: '34',   en: 'Spain',               ru: 'Испания' },
+  { code: '31',   en: 'Netherlands',         ru: 'Нидерланды' },
+  { code: '32',   en: 'Belgium',             ru: 'Бельгия' },
+  { code: '41',   en: 'Switzerland',         ru: 'Швейцария' },
+  { code: '43',   en: 'Austria',             ru: 'Австрия' },
+  { code: '48',   en: 'Poland',              ru: 'Польша' },
+  { code: '36',   en: 'Hungary',             ru: 'Венгрия' },
+  { code: '40',   en: 'Romania',             ru: 'Румыния' },
+  { code: '30',   en: 'Greece',              ru: 'Греция' },
+  { code: '90',   en: 'Turkey',              ru: 'Турция' },
+  { code: '98',   en: 'Iran',                ru: 'Иран' },
+  { code: '86',   en: 'China',               ru: 'Китай' },
+  { code: '81',   en: 'Japan',               ru: 'Япония' },
+  { code: '82',   en: 'South Korea',         ru: 'Южная Корея' },
+  { code: '91',   en: 'India',               ru: 'Индия' },
+  { code: '92',   en: 'Pakistan',            ru: 'Пакистан' },
+  { code: '66',   en: 'Thailand',            ru: 'Таиланд' },
+  { code: '84',   en: 'Vietnam',             ru: 'Вьетнам' },
+  { code: '62',   en: 'Indonesia',           ru: 'Индонезия' },
+  { code: '63',   en: 'Philippines',         ru: 'Филиппины' },
+  { code: '60',   en: 'Malaysia',            ru: 'Малайзия' },
+  { code: '65',   en: 'Singapore',           ru: 'Сингапур' },
+  { code: '61',   en: 'Australia',           ru: 'Австралия' },
+  { code: '64',   en: 'New Zealand',         ru: 'Новая Зеландия' },
+  { code: '55',   en: 'Brazil',              ru: 'Бразилия' },
+  { code: '54',   en: 'Argentina',           ru: 'Аргентина' },
+  { code: '52',   en: 'Mexico',              ru: 'Мексика' },
+  { code: '57',   en: 'Colombia',            ru: 'Колумбия' },
+  { code: '56',   en: 'Chile',               ru: 'Чили' },
+  { code: '51',   en: 'Peru',                ru: 'Перу' },
+  { code: '27',   en: 'South Africa',        ru: 'ЮАР' },
+  { code: '20',   en: 'Egypt',               ru: 'Египет' },
+].sort((a, b) => b.code.length - a.code.length);
+
+export function parsePhone(raw: string, lang: 'ru' | 'en' = 'ru'): { normalized: string; countryCode: string; country: string } | null {
+  const stripped = raw.replace(/[\s\-\(\)\.]/g, '');
+  const digits = stripped.startsWith('+') ? stripped.slice(1) : stripped;
+  if (digits.length < 7) return null;
+  for (const entry of PHONE_COUNTRY_CODES) {
+    if (digits.startsWith(entry.code)) {
+      return { normalized: digits, countryCode: entry.code, country: lang === 'ru' ? entry.ru : entry.en };
+    }
+  }
+  return null;
+}
+
+export function normalizePhone(raw: string): string {
+  const stripped = raw.replace(/[\s\-\(\)\.]/g, '');
+  return stripped.startsWith('+') ? stripped : `+${stripped}`;
+}
+
+const EMAIL_PROVIDERS: Record<string, string> = {
+  'gmail.com': 'Gmail', 'googlemail.com': 'Gmail',
+  'yahoo.com': 'Yahoo Mail', 'yahoo.co.uk': 'Yahoo Mail', 'yahoo.co.jp': 'Yahoo Mail',
+  'outlook.com': 'Outlook', 'hotmail.com': 'Hotmail / Outlook', 'hotmail.co.uk': 'Hotmail / Outlook',
+  'live.com': 'Outlook', 'msn.com': 'Outlook',
+  'mail.ru': 'Mail.ru', 'inbox.ru': 'Mail.ru', 'list.ru': 'Mail.ru', 'bk.ru': 'Mail.ru',
+  'yandex.ru': 'Yandex Mail', 'yandex.com': 'Yandex Mail', 'ya.ru': 'Yandex Mail',
+  'yandex.by': 'Yandex Mail', 'yandex.kz': 'Yandex Mail',
+  'icloud.com': 'iCloud Mail', 'me.com': 'iCloud Mail', 'mac.com': 'iCloud Mail',
+  'protonmail.com': 'ProtonMail', 'proton.me': 'ProtonMail',
+  'tutanota.com': 'Tutanota', 'tuta.io': 'Tutanota',
+  'rambler.ru': 'Rambler', 'lenta.ru': 'Rambler', 'ro.ru': 'Rambler',
+  'ukr.net': 'UKR.net', 'meta.ua': 'Meta.ua', 'i.ua': 'I.ua',
+  'aol.com': 'AOL Mail', 'aim.com': 'AOL Mail',
+  'zoho.com': 'Zoho Mail', 'fastmail.com': 'FastMail', 'fastmail.fm': 'FastMail',
+  'gmx.com': 'GMX', 'gmx.de': 'GMX', 'gmx.net': 'GMX', 'web.de': 'Web.de',
+  'qq.com': 'QQ Mail', '163.com': 'NetEase 163', '126.com': 'NetEase 126',
+  'naver.com': 'Naver', 'daum.net': 'Daum',
+};
+
+export function parseEmail(raw: string): { domain: string; provider: string } | null {
+  const match = raw.trim().match(/^[^@]+@([^@]+)$/);
+  if (!match) return null;
+  const domain = match[1].toLowerCase();
+  return { domain, provider: EMAIL_PROVIDERS[domain] || domain };
+}

@@ -5,7 +5,7 @@ import { createEntity, getEntities, createRelationship } from '../api';
 import { useEntitySchemas } from '../context/EntitySchemasContext';
 import { useLang } from '../i18n/LangProvider';
 import { useSettings } from '../context/SettingsContext';
-import { BUILTIN_ENTITY_TYPES, BUILTIN_FIELD_PRESETS } from '../utils';
+import { BUILTIN_ENTITY_TYPES, BUILTIN_FIELD_PRESETS, parsePhone, normalizePhone, parseEmail } from '../utils';
 import type { FieldDefinition, Entity } from '../types';
 import { ArrowLeft, Plus, X, Camera, User, Search } from 'lucide-react';
 import DatePicker from '../components/ui/DatePicker';
@@ -17,7 +17,7 @@ export default function CreateEntity() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t, lang } = useLang();
-  const { dateLocale } = useSettings();
+  const { dateLocale, smartParse } = useSettings();
   const { schemas, allTypeNames, getColor, getIcon, getLabel } = useEntitySchemas();
   const { data: allEntities = [] } = useQuery({
     queryKey: ['entities'],
@@ -577,12 +577,57 @@ export default function CreateEntity() {
               </label>
               <input
                 value={value}
-                onChange={e => setValue(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setValue(v);
+                  if (!smartParse) return;
+                  // Phone: auto-fill country_code + carrier (country)
+                  if (type === 'phone') {
+                    const parsed = parsePhone(v, lang as 'ru' | 'en');
+                    if (parsed) {
+                      setSchemaValues(prev => ({
+                        ...prev,
+                        country_code: parsed.countryCode,
+                        carrier: parsed.country,
+                      }));
+                    }
+                  }
+                  // Email: auto-fill provider
+                  if (type === 'email') {
+                    const parsed = parseEmail(v);
+                    if (parsed) {
+                      setSchemaValues(prev => ({ ...prev, provider: parsed.provider }));
+                    }
+                  }
+                }}
+                onBlur={e => {
+                  // Normalize phone format on blur
+                  if (smartParse && type === 'phone' && e.target.value.trim()) {
+                    setValue(normalizePhone(e.target.value));
+                  }
+                }}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 placeholder={lang === 'ru' ? 'Оставьте пустым — заполнится автоматически' : 'Leave empty — auto-filled from fields'}
                 className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                 style={{ borderColor: value ? `${color}60` : '' }}
               />
+              {/* Smart parse hint */}
+              {smartParse && value && type === 'phone' && (() => {
+                const p = parsePhone(value, lang as 'ru' | 'en');
+                return p ? (
+                  <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--accent)', opacity: 0.8 }}>
+                    ⚡ {lang === 'ru' ? `Страна: ${p.country} · Код: +${p.countryCode}` : `Country: ${p.country} · Code: +${p.countryCode}`}
+                  </p>
+                ) : null;
+              })()}
+              {smartParse && value && type === 'email' && (() => {
+                const p = parseEmail(value);
+                return p ? (
+                  <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--accent)', opacity: 0.8 }}>
+                    ⚡ {lang === 'ru' ? `Провайдер: ${p.provider}` : `Provider: ${p.provider}`}
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             {/* Schema-defined fields (includes edited builtins) */}

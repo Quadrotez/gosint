@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Settings, Sun, Moon, Clock, Globe, Check, Download, Upload,
   Cloud, UploadCloud, DownloadCloud, RefreshCw, TestTube, Wifi, WifiOff,
-  Eye, EyeOff, AlertCircle,
+  Eye, EyeOff, AlertCircle, Zap,
 } from 'lucide-react';
 import { useLang } from '../i18n/LangProvider';
 import { useSettings, type Theme, type DateFormat, type DateLocale } from '../context/SettingsContext';
@@ -164,7 +164,7 @@ const WebDAVSection = React.memo(function WebDAVSection({ lang, toast }: { lang:
 
 export default function SettingsPage() {
   const { t, lang, setLang } = useLang();
-  const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate } = useSettings();
+  const { theme, setTheme, dateFormat, setDateFormat, dateLocale, setDateLocale, formatDate, smartParse, setSmartParse } = useSettings();
   const toast = useToast();
   const qc = useQueryClient();
   const [saved, setSaved] = useState(false);
@@ -276,6 +276,28 @@ export default function SettingsPage() {
             <div className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest mb-1">Preview</div>
             <div className="text-sm font-mono text-[var(--text-primary)]">{formatDate(now)}</div>
           </div>
+        </Section>
+
+        <Section icon={Zap} title={lang === 'ru' ? 'Умный парсинг' : 'Smart parsing'}>
+          <p className="text-xs font-mono mb-3" style={{ color: 'var(--text-muted)' }}>
+            {lang === 'ru'
+              ? 'При создании сущностей автоматически заполняет поля на основе введённого значения. Например, из номера телефона определяет страну по коду, из email — провайдера.'
+              : 'Automatically fills fields when creating entities. For example, extracts country from phone code, provider from email domain.'}
+          </p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div
+              onClick={() => setSmartParse(!smartParse)}
+              className="w-10 h-5 rounded-full transition-colors flex items-center px-0.5 cursor-pointer"
+              style={{ background: smartParse ? 'var(--accent)' : 'var(--border)' }}>
+              <div className="w-4 h-4 rounded-full bg-white transition-transform shadow"
+                style={{ transform: smartParse ? 'translateX(20px)' : 'translateX(0)' }} />
+            </div>
+            <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>
+              {smartParse
+                ? (lang === 'ru' ? '✓ Включён' : '✓ Enabled')
+                : (lang === 'ru' ? 'Отключён' : 'Disabled')}
+            </span>
+          </label>
         </Section>
 
         <Section icon={Download} title={lang === 'ru' ? 'Резервная копия базы данных' : 'Database Backup'}>
