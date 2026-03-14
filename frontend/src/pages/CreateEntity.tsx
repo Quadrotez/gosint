@@ -965,242 +965,273 @@ function EntitiesFieldPicker({
   );
 }
 
-// ── GeoPositionPicker: address search via Nominatim (OSM), stores lat,lon ────
+// ── GeoPositionPicker ────────────────────────────────────────────────────────
+
+// Nominatim OSM types that represent an actual building (show apt form)
+const BUILDING_TYPES = new Set([
+  'house','residential','apartments','dormitory','detached','terrace',
+  'semidetached_house','static_caravan','bungalow','cabin','farm',
+  'building','construction','yes',
+]);
 
 interface GeoPositionPickerProps {
   label: string;
   required: boolean;
   value: string;
   onChange: (v: string) => void;
-  onAddressResolved?: (name: string, coords: string, meta?: Record<string, string>) => void;
+  onAddressResolved?: (name: string, coords: string, meta?: Record<string,string>) => void;
   onExistingAddressPicked?: (id: string) => void;
   addressEntities?: any[];
   lang: string;
 }
 
 function GeoPositionPicker({
-  label, required, value, onChange, onAddressResolved, onExistingAddressPicked, addressEntities = [], lang,
+  label, required, value, onChange,
+  onAddressResolved, onExistingAddressPicked,
+  addressEntities = [], lang,
 }: GeoPositionPickerProps) {
-  const [address, setAddress] = useState('');
+  const [query, setQuery]           = useState('');
+  const [results, setResults]       = useState<{ display_name: string; lat: string; lon: string; type?: string; class?: string }[]>([]);
+  const [searching, setSearching]   = useState(false);
+  const [showDrop, setShowDrop]     = useState(false);
   const [resolvedName, setResolvedName] = useState('');
-  const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState('');
-  const [addrSearch, setAddrSearch] = useState('');
-  const [addressSaved, setAddressSaved] = useState(false);
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [entrance, setEntrance] = useState('');
-  const [floor, setFloor] = useState('');
-  const [apartment, setApartment] = useState('');
-  const [intercom, setIntercom] = useState('');
-  const [showAptForm, setShowAptForm] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isBuilding, setIsBuilding] = useState(false);
+  // apt details
+  const [isPrivate, setIsPrivate]   = useState(false);
+  const [entrance, setEntrance]     = useState('');
+  const [floor, setFloor]           = useState('');
+  const [apartment, setApartment]   = useState('');
+  const [intercom, setIntercom]     = useState('');
+  // linked state
+  const [linked, setLinked]         = useState(false);
+  const [addrFilter, setAddrFilter] = useState('');
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [lat, lon] = value ? value.split(',') : ['', ''];
+  const [lat, lon] = value ? value.split(',') : ['',''];
   const osmUrl = value ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16` : null;
 
-  const doSearch = async (q: string) => {
-    if (!q.trim()) { setResults([]); setOpen(false); return; }
-    setSearching(true); setError('');
+  const search = async (q: string) => {
+    setSearching(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,
         { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } }
       );
-      const data = await res.json();
-      setResults(data); setOpen(true);
-      if (data.length === 0) setError(lang === 'ru' ? 'Ничего не найдено' : 'No results found');
-    } catch { setError(lang === 'ru' ? 'Ошибка запроса' : 'Search failed'); }
+      const data = await r.json();
+      setResults(data); setShowDrop(true);
+    } catch {/* ignore */}
     finally { setSearching(false); }
   };
 
-  const handleInput = (val: string) => {
-    setAddress(val); setError('');
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (val.trim().length >= 3) debounceRef.current = setTimeout(() => doSearch(val), 400);
-    else { setResults([]); setOpen(false); }
+  const onInput = (v: string) => {
+    setQuery(v);
+    if (debRef.current) clearTimeout(debRef.current);
+    if (v.trim().length >= 2) debRef.current = setTimeout(() => search(v), 380);
+    else { setResults([]); setShowDrop(false); }
   };
 
-  const select = (r: { display_name: string; lat: string; lon: string }) => {
+  const pick = (r: typeof results[0]) => {
     const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
     onChange(coords);
-    setAddress(r.display_name); setResolvedName(r.display_name);
-    setAddressSaved(false); setOpen(false); setResults([]);
-    setShowAptForm(true);
+    setQuery(r.display_name);
+    setResolvedName(r.display_name);
+    const building = BUILDING_TYPES.has(r.type || '') || BUILDING_TYPES.has(r.class || '');
+    setIsBuilding(building);
+    setIsPrivate(false); setEntrance(''); setFloor(''); setApartment(''); setIntercom('');
+    setLinked(false);
+    setShowDrop(false); setResults([]);
   };
 
   const clear = () => {
-    onChange(''); setAddress(''); setResolvedName('');
-    setResults([]); setOpen(false); setAddressSaved(false);
+    onChange(''); setQuery(''); setResolvedName(''); setResults([]);
+    setShowDrop(false); setLinked(false); setIsBuilding(false);
     setIsPrivate(false); setEntrance(''); setFloor(''); setApartment(''); setIntercom('');
-    setShowAptForm(false);
   };
 
-  const handleSaveAsAddress = () => {
+  const save = () => {
     if (!value || !resolvedName) return;
-    const meta: Record<string, string> = { coordinates: value, is_private: isPrivate ? 'true' : 'false' };
-    if (!isPrivate) {
-      if (entrance) meta.entrance = entrance;
-      if (floor) meta.floor = floor;
-      if (apartment) meta.apartment = apartment;
-      if (intercom) meta.intercom = intercom;
+    const meta: Record<string,string> = { coordinates: value };
+    if (isBuilding) {
+      meta.is_private = isPrivate ? 'true' : 'false';
+      if (!isPrivate) {
+        if (entrance)  meta.entrance  = entrance;
+        if (floor)     meta.floor     = floor;
+        if (apartment) meta.apartment = apartment;
+        if (intercom)  meta.intercom  = intercom;
+      }
     }
     onAddressResolved?.(resolvedName, value, meta);
-    setAddressSaved(true); setShowAptForm(false);
+    setLinked(true);
   };
 
-  const filteredAddrs = addressEntities.filter((e: any) =>
-    !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase())
+  const pickExisting = (id: string) => {
+    onExistingAddressPicked?.(id);
+    setLinked(true);
+  };
+
+  const filteredExisting = addressEntities.filter((e: any) =>
+    !addrFilter || e.value.toLowerCase().includes(addrFilter.toLowerCase())
   );
 
+  const inputCls = "w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] transition-colors";
+  const smallInputCls = "w-full px-2 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors";
+
   return (
-    <div>
-      <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 flex items-center gap-1">
-        {'📍'} {label}{required && <span className="text-[#ff4444]">*</span>}
+    <div className="space-y-2">
+      <label className="text-xs font-mono flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+        📍 {label}{required && <span style={{ color: '#ff4444' }}>*</span>}
       </label>
 
-      {/* 1. Existing addresses shown first */}
-      {onAddressResolved && addressEntities.length > 0 && !addressSaved && (
-        <div className="mb-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-          <div className="px-3 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-light)' }}>
-            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              {lang === 'ru' ? '🔗 Существующие адреса' : '🔗 Existing addresses'}
-            </span>
-            <input value={addrSearch} onChange={e => setAddrSearch(e.target.value)}
-              placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
-              className="ml-auto w-28 px-2 py-0.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
-            />
-          </div>
-          <div className="max-h-32 overflow-y-auto">
-            {filteredAddrs.map((e: any) => (
-              <button key={e.id} type="button"
-                onClick={() => { onExistingAddressPicked?.(e.id); setAddressSaved(true); }}
-                className="w-full px-3 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-2"
-                style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <span style={{ color: '#a78bfa' }}>📍</span>
-                <span className="truncate">{e.value}</span>
-                {(e.metadata as any)?.apartment && (
-                  <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
-                    {lang === 'ru' ? 'кв.' : 'apt.'} {(e.metadata as any).apartment}
-                  </span>
-                )}
-                {(e.metadata as any)?.is_private === 'true' && (
-                  <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>🏠</span>
-                )}
+      {/* ── Search ── */}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={e => onInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && query.trim().length >= 2 && search(query)}
+          placeholder={lang === 'ru' ? 'Поиск адреса...' : 'Search address...'}
+          className={inputCls}
+          style={{ paddingRight: '2.5rem' }}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>
+          {searching ? '⟳' : '🔍'}
+        </span>
+
+        {/* Dropdown */}
+        {showDrop && results.length > 0 && (
+          <div className="absolute z-50 mt-1 w-full rounded-lg shadow-2xl overflow-hidden"
+            style={{ border: '1px solid var(--border-light)', background: 'var(--bg-card)' }}>
+            {results.map((r, i) => (
+              <button key={i} type="button" onClick={() => pick(r)}
+                className="w-full px-3 py-2.5 text-left hover:bg-[var(--bg-secondary)] transition-colors flex flex-col gap-0.5"
+                style={{ borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
+                <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                  {parseFloat(r.lat).toFixed(5)}, {parseFloat(r.lon).toFixed(5)}
+                  {(r.type || r.class) && <span className="ml-2 opacity-50">{r.type || r.class}</span>}
+                </span>
               </button>
             ))}
-            {filteredAddrs.length === 0 && (
-              <p className="px-3 py-2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                {lang === 'ru' ? 'Не найдено' : 'Not found'}
-              </p>
-            )}
           </div>
-          <div className="px-3 py-1 border-t text-center text-[10px] font-mono" style={{ borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
-            {lang === 'ru' ? '— или найдите новый адрес ниже —' : '— or search for a new address below —'}
-          </div>
-        </div>
-      )}
-
-      {/* 2. Coords + apartment form */}
-      {value && (
-        <div className="mb-2 space-y-1.5">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono"
-            style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
-            <span style={{ color: 'var(--accent)' }}>📌 {value}</span>
-            <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
-              className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>OSM ↗</a>
-            <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
-          </div>
-
-          {onAddressResolved && showAptForm && !addressSaved && (
-            <div className="rounded-lg p-3 space-y-2.5" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <button type="button" onClick={() => setIsPrivate(v => !v)}
-                  className="w-8 h-4 rounded-full transition-colors flex items-center px-0.5 shrink-0"
-                  style={{ background: isPrivate ? 'var(--accent)' : 'var(--border)' }}>
-                  <div className="w-3 h-3 rounded-full bg-white transition-transform"
-                    style={{ transform: isPrivate ? 'translateX(16px)' : 'translateX(0)' }} />
-                </button>
-                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
-                  🏠 {lang === 'ru' ? 'Частный дом' : 'Private house'}
-                </span>
-              </label>
-
-              {!isPrivate && (
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { k: 'entrance', lbl: lang === 'ru' ? 'Подъезд' : 'Entrance', v: entrance, fn: setEntrance, t: 'text' },
-                    { k: 'floor',    lbl: lang === 'ru' ? 'Этаж' : 'Floor',       v: floor,    fn: setFloor,    t: 'number' },
-                    { k: 'apt',      lbl: lang === 'ru' ? 'Квартира' : 'Apt',     v: apartment, fn: setApartment, t: 'text' },
-                    { k: 'intercom', lbl: lang === 'ru' ? 'Домофон' : 'Intercom', v: intercom, fn: setIntercom, t: 'text' },
-                  ].map(f => (
-                    <div key={f.k}>
-                      <label className="text-[10px] font-mono block mb-0.5" style={{ color: 'var(--text-muted)' }}>{f.lbl}</label>
-                      <input type={f.t} value={f.v} onChange={e => f.fn(e.target.value)}
-                        className="w-full px-2 py-1 rounded font-mono text-xs outline-none border"
-                        style={{ background: 'var(--bg-main)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button type="button" onClick={handleSaveAsAddress}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs w-full"
-                style={{ background: '#a78bfa20', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
-                📍 {lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity'}
-              </button>
-            </div>
-          )}
-
-          {addressSaved && (
-            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-xs"
-              style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
-              <span>✓ {lang === 'ru' ? 'Адрес будет привязан' : 'Address will be linked'}</span>
-              <button type="button" onClick={() => { setAddressSaved(false); setShowAptForm(true); }}
-                className="text-[10px] underline" style={{ color: '#4ade80' }}>
-                {lang === 'ru' ? 'отмена' : 'undo'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 3. Search input */}
-      <div className="relative">
-        <input value={address} onChange={e => handleInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && doSearch(address)}
-          placeholder={lang === 'ru' ? 'Введите адрес (минимум 3 символа)...' : 'Type address (min 3 chars)...'}
-          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
-          style={{ paddingRight: searching ? '2.5rem' : undefined }}
-        />
-        {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>…</span>}
+        )}
       </div>
 
-      {error && <p className="mt-1 text-xs font-mono" style={{ color: '#f87171' }}>{error}</p>}
+      {/* ── Selected location card ── */}
+      {value && !linked && (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+          {/* Header: coords + OSM + clear */}
+          <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="font-mono text-xs" style={{ color: 'var(--accent)' }}>📌 {lat}, {lon}</span>
+            <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
+              className="ml-auto font-mono text-[10px] underline" style={{ color: 'var(--text-muted)' }}>
+              OpenStreetMap ↗
+            </a>
+            <button type="button" onClick={clear}
+              className="w-5 h-5 rounded flex items-center justify-center hover:bg-[var(--border)] transition-colors"
+              style={{ color: 'var(--text-muted)' }}>✕</button>
+          </div>
 
-      {open && results.length > 0 && (
-        <div className="mt-1 rounded-lg overflow-hidden shadow-xl"
-          style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-          {results.map((r, i) => (
-            <button key={i} onClick={() => select(r)}
-              className="w-full px-3 py-2.5 text-left font-mono text-xs hover:bg-[var(--border)] flex flex-col gap-0.5"
-              style={{ borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none' }}>
-              <span style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
-              <span style={{ color: 'var(--text-muted)' }}>{parseFloat(r.lat).toFixed(6)}, {parseFloat(r.lon).toFixed(6)}</span>
+          {/* Apt details — only for actual buildings */}
+          {onAddressResolved && isBuilding && (
+            <div className="px-3 py-2.5 space-y-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
+              {/* Private house toggle */}
+              <button type="button" onClick={() => setIsPrivate(v => !v)}
+                className="flex items-center gap-2.5 w-full group">
+                <div className="w-9 h-5 rounded-full flex items-center px-0.5 shrink-0 transition-all duration-200"
+                  style={{ background: isPrivate ? '#a78bfa' : 'var(--border)' }}>
+                  <div className="w-4 h-4 rounded-full bg-white shadow transition-transform duration-200"
+                    style={{ transform: isPrivate ? 'translateX(16px)' : 'translateX(0)' }} />
+                </div>
+                <span className="font-mono text-xs" style={{ color: isPrivate ? '#a78bfa' : 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Частный дом' : 'Private house'}
+                </span>
+              </button>
+
+              {/* Apt fields */}
+              {!isPrivate && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="font-mono text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>{lang === 'ru' ? 'Подъезд' : 'Entrance'}</div>
+                    <input value={entrance} onChange={e => setEntrance(e.target.value)} className={smallInputCls} />
+                  </div>
+                  <div>
+                    <div className="font-mono text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>{lang === 'ru' ? 'Этаж' : 'Floor'}</div>
+                    <input type="number" value={floor} onChange={e => setFloor(e.target.value)} className={smallInputCls} />
+                  </div>
+                  <div>
+                    <div className="font-mono text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>{lang === 'ru' ? 'Квартира' : 'Apartment'}</div>
+                    <input value={apartment} onChange={e => setApartment(e.target.value)} className={smallInputCls} />
+                  </div>
+                  <div>
+                    <div className="font-mono text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>{lang === 'ru' ? 'Домофон' : 'Intercom'}</div>
+                    <input value={intercom} onChange={e => setIntercom(e.target.value)} className={smallInputCls} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Save button */}
+          {onAddressResolved && (
+            <button type="button" onClick={save}
+              className="w-full px-3 py-2 font-mono text-xs transition-colors hover:opacity-90"
+              style={{ color: '#a78bfa', background: '#a78bfa10' }}>
+              + {lang === 'ru' ? 'Создать сущность «Адрес» и привязать' : 'Create Address entity and link'}
             </button>
-          ))}
-          <button onClick={() => setOpen(false)}
-            className="w-full px-3 py-2 text-xs font-mono text-center"
-            style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
-            {lang === 'ru' ? 'Закрыть' : 'Close'}
+          )}
+        </div>
+      )}
+
+      {/* ── Linked confirmation ── */}
+      {linked && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-xs"
+          style={{ background: '#4ade8012', border: '1px solid #4ade8030', color: '#4ade80' }}>
+          <span>✓</span>
+          <span>{lang === 'ru' ? 'Адрес будет привязан при сохранении' : 'Address will be linked on save'}</span>
+          <button type="button" onClick={() => setLinked(false)}
+            className="ml-auto text-[10px] underline opacity-70 hover:opacity-100">
+            {lang === 'ru' ? 'отмена' : 'undo'}
           </button>
         </div>
       )}
 
-      <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-        {lang === 'ru' ? 'Данные геолокации © OpenStreetMap' : 'Geocoding data © OpenStreetMap contributors'}
-      </p>
+      {/* ── Existing addresses ── */}
+      {onAddressResolved && addressEntities.length > 0 && !linked && (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+          <div className="px-3 py-1.5 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ru' ? 'Существующие адреса' : 'Existing addresses'}
+            </span>
+            <input value={addrFilter} onChange={e => setAddrFilter(e.target.value)}
+              placeholder={lang === 'ru' ? 'фильтр...' : 'filter...'}
+              className="ml-auto w-24 px-2 py-0.5 rounded font-mono text-xs outline-none bg-[var(--bg-main)] border border-[var(--border-light)] text-[var(--text-primary)]"
+            />
+          </div>
+          <div className="max-h-28 overflow-y-auto">
+            {filteredExisting.map((e: any) => {
+              const m = (e.metadata || {}) as Record<string, string>;
+              return (
+                <button key={e.id} type="button" onClick={() => pickExisting(e.id)}
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-card)] transition-colors flex items-center gap-2"
+                  style={{ borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: '#a78bfa', fontSize: 14 }}>📍</span>
+                  <span className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>{e.value}</span>
+                  {m.is_private === 'true' && <span className="ml-auto text-sm shrink-0">🏠</span>}
+                  {m.apartment && (
+                    <span className="ml-auto font-mono text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                      {lang === 'ru' ? 'кв.' : 'apt'} {m.apartment}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {filteredExisting.length === 0 && (
+              <p className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Не найдено' : 'Nothing found'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

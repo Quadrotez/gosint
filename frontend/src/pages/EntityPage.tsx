@@ -1499,26 +1499,31 @@ function EntityIconPicker({ currentIcon, defaultIcon, onChange, lang }: {
   );
 }
 
-// ── InlineGeoPicker: compact geo editor for EntityPage ──────────────────────
+// ── InlineGeoPicker ──────────────────────────────────────────────────────────
+
+const BUILDING_TYPES_EP = new Set([
+  'house','residential','apartments','dormitory','detached','terrace',
+  'semidetached_house','bungalow','cabin','farm','building','construction','yes',
+]);
 
 function InlineGeoPicker({ value, onChange, entityId, lang }: {
   value: string; onChange: (v: string) => void; entityId?: string; lang: string;
 }) {
-  const [address, setAddress] = useState('');
+  const [query, setQuery]             = useState('');
+  const [results, setResults]         = useState<{display_name:string;lat:string;lon:string;type?:string;class?:string}[]>([]);
+  const [searching, setSearching]     = useState(false);
+  const [showDrop, setShowDrop]       = useState(false);
   const [resolvedName, setResolvedName] = useState('');
-  const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<string | null>(null);
-  const [addrSearch, setAddrSearch] = useState('');
-  const [showAptDetails, setShowAptDetails] = useState(false);
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [entrance, setEntrance] = useState('');
-  const [floor, setFloor] = useState('');
-  const [apartment, setApartment] = useState('');
-  const [intercom, setIntercom] = useState('');
-  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isBuilding, setIsBuilding]   = useState(false);
+  const [isPrivate, setIsPrivate]     = useState(false);
+  const [entrance, setEntrance]       = useState('');
+  const [floor, setFloor]             = useState('');
+  const [apartment, setApartment]     = useState('');
+  const [intercom, setIntercom]       = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [savedId, setSavedId]         = useState<string|null>(null);
+  const [addrFilter, setAddrFilter]   = useState('');
+  const debRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const qc = useQueryClient();
 
   const { data: allEntities = [] } = useQuery({
@@ -1526,39 +1531,44 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
     queryFn: () => getEntities({ limit: 1000 }),
     staleTime: 30_000,
   });
-  const addressEntities = (allEntities as any[]).filter((e: any) => e.type === 'address');
+  const addressEntities = (allEntities as any[]).filter((e:any) => e.type === 'address');
 
-  const [lat, lon] = value ? value.split(',') : ['', ''];
+  const [lat, lon] = value ? value.split(',') : ['',''];
   const osmUrl = value ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16` : null;
 
-  const doSearch = async (q: string) => {
-    if (!q.trim()) return;
+  const search = async (q: string) => {
     setSearching(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`,
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`,
         { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } }
       );
-      const data = await res.json();
-      setResults(data); setOpen(true);
-    } catch { /* ignore */ }
+      const data = await r.json();
+      setResults(data); setShowDrop(true);
+    } catch {/* ignore */}
     finally { setSearching(false); }
   };
 
-  const handleInput = (v: string) => {
-    setAddress(v);
+  const onInput = (v: string) => {
+    setQuery(v);
     if (debRef.current) clearTimeout(debRef.current);
-    if (v.trim().length >= 3) debRef.current = setTimeout(() => doSearch(v), 400);
-    else { setResults([]); setOpen(false); }
+    if (v.trim().length >= 2) debRef.current = setTimeout(() => search(v), 380);
+    else { setResults([]); setShowDrop(false); }
   };
 
-  const select = (r: { display_name: string; lat: string; lon: string }) => {
-    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
-    setAddress(r.display_name);
-    setResolvedName(r.display_name);
-    setSavedId(null);
-    setOpen(false);
-    setShowAptDetails(true);
+  const pick = (r: typeof results[0]) => {
+    const coords = `${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`;
+    onChange(coords);
+    setQuery(r.display_name); setResolvedName(r.display_name);
+    const building = BUILDING_TYPES_EP.has(r.type||'') || BUILDING_TYPES_EP.has(r.class||'');
+    setIsBuilding(building);
+    setIsPrivate(false); setEntrance(''); setFloor(''); setApartment(''); setIntercom('');
+    setSavedId(null); setShowDrop(false); setResults([]);
+  };
+
+  const clear = () => {
+    onChange(''); setQuery(''); setResolvedName(''); setSavedId(null);
+    setIsBuilding(false); setResults([]); setShowDrop(false);
   };
 
   const linkTo = async (addrId: string) => {
@@ -1569,184 +1579,176 @@ function InlineGeoPicker({ value, onChange, entityId, lang }: {
       setSavedId(addrId);
       qc.invalidateQueries({ queryKey: ['entities'] });
       qc.invalidateQueries({ queryKey: ['relationships', entityId] });
-    } catch { /* ignore */ }
+    } catch {/* ignore */}
     finally { setSaving(false); }
   };
 
-  const handleSave = async () => {
+  const save = async () => {
     if (!entityId || !value || !resolvedName || saving) return;
-    // Dedup: same coords + same apartment = same entity
-    const existing = addressEntities.find((e: any) => {
-      const m = (e.metadata || {}) as Record<string, string>;
-      const coordsMatch = m.coordinates === value;
-      if (!coordsMatch) return false;
+    // Dedup: same coords + same unit details
+    const existing = (addressEntities as any[]).find((e:any) => {
+      const m = (e.metadata||{}) as Record<string,string>;
+      if (m.coordinates !== value) return false;
       if (isPrivate) return m.is_private === 'true';
-      return m.apartment === (apartment || '') && m.entrance === (entrance || '') && m.floor === (floor || '');
+      return m.apartment === (apartment||'') && m.entrance === (entrance||'') && m.floor === (floor||'');
     });
     if (existing) { await linkTo(existing.id); return; }
     setSaving(true);
     try {
-      const meta: Record<string, string> = { coordinates: value, is_private: isPrivate ? 'true' : 'false' };
-      if (!isPrivate) {
-        if (entrance) meta.entrance = entrance;
-        if (floor) meta.floor = floor;
-        if (apartment) meta.apartment = apartment;
-        if (intercom) meta.intercom = intercom;
+      const meta: Record<string,string> = { coordinates: value };
+      if (isBuilding) {
+        meta.is_private = isPrivate ? 'true' : 'false';
+        if (!isPrivate) {
+          if (entrance)  meta.entrance  = entrance;
+          if (floor)     meta.floor     = floor;
+          if (apartment) meta.apartment = apartment;
+          if (intercom)  meta.intercom  = intercom;
+        }
       }
       const addrEntity = await createEntity({ type: 'address', value: resolvedName, metadata: meta });
       await createRelationship({ source_entity_id: entityId, target_entity_id: addrEntity.id, type: 'located_at' });
       setSavedId(addrEntity.id);
       qc.invalidateQueries({ queryKey: ['entities'] });
       qc.invalidateQueries({ queryKey: ['relationships', entityId] });
-    } catch { /* ignore */ }
+    } catch {/* ignore */}
     finally { setSaving(false); }
   };
 
-  const filteredAddrs = addressEntities.filter((e: any) =>
-    !addrSearch || e.value.toLowerCase().includes(addrSearch.toLowerCase())
+  const filteredExisting = (addressEntities as any[]).filter((e:any) =>
+    !addrFilter || e.value.toLowerCase().includes(addrFilter.toLowerCase())
   );
 
+  const smallInputCls = "w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors";
+
   return (
-    <div className="space-y-1.5">
-      {/* ── 1. Existing addresses first ── */}
-      {entityId && addressEntities.length > 0 && !savedId && (
-        <div className="rounded overflow-hidden" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-          <div className="px-2 py-1.5 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-light)' }}>
-            <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              🔗 {lang === 'ru' ? 'Существующие адреса' : 'Existing addresses'}
-            </span>
-            <input
-              value={addrSearch}
-              onChange={e => setAddrSearch(e.target.value)}
-              placeholder={lang === 'ru' ? 'Поиск...' : 'Search...'}
-              className="ml-auto w-28 px-1.5 py-0.5 bg-[var(--bg-main)] border border-[var(--border-light)] rounded font-mono text-xs text-[var(--text-primary)] outline-none"
-            />
-          </div>
-          <div className="max-h-32 overflow-y-auto">
-            {filteredAddrs.map((e: any) => (
-              <button key={e.id} type="button" onClick={() => linkTo(e.id)}
-                className="w-full px-2 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex items-center gap-1.5"
-                style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-                <span style={{ color: '#a78bfa' }}>📍</span>
-                <span className="truncate">{e.value}</span>
-                {(e.metadata as any)?.apartment && (
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
-                    {lang === 'ru' ? 'кв.' : 'apt.'} {(e.metadata as any).apartment}
-                  </span>
-                )}
-                {(e.metadata as any)?.is_private === 'true' && (
-                  <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>🏠</span>
-                )}
+    <div className="space-y-2">
+      {/* Search */}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={e => onInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && query.trim().length >= 2 && search(query)}
+          placeholder={lang === 'ru' ? 'Поиск адреса...' : 'Search address...'}
+          className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none border text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] transition-colors"
+          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', paddingRight: '1.8rem' }}
+        />
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          {searching ? '⟳' : '🔍'}
+        </span>
+        {showDrop && results.length > 0 && (
+          <div className="absolute z-50 mt-1 w-full rounded-lg shadow-2xl overflow-hidden"
+            style={{ border: '1px solid var(--border-light)', background: 'var(--bg-card)' }}>
+            {results.map((r,i) => (
+              <button key={i} type="button" onClick={() => pick(r)}
+                className="w-full px-2.5 py-2 text-left hover:bg-[var(--bg-secondary)] transition-colors flex flex-col gap-0.5"
+                style={{ borderBottom: i < results.length-1 ? '1px solid var(--border)' : 'none' }}>
+                <span className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
+                <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                  {parseFloat(r.lat).toFixed(5)}, {parseFloat(r.lon).toFixed(5)}
+                  {(r.type||r.class) && <span className="ml-1 opacity-50">{r.type||r.class}</span>}
+                </span>
               </button>
             ))}
-            {filteredAddrs.length === 0 && (
-              <p className="px-2 py-1.5 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                {lang === 'ru' ? 'Не найдено' : 'Not found'}
-              </p>
-            )}
           </div>
-          <div className="px-2 py-1 border-t text-[10px] font-mono" style={{ borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}>
-            {lang === 'ru' ? '— или найдите новый адрес ниже —' : '— or search for a new address below —'}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ── 2. Coords + apt details + save ── */}
-      {value && (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
+      {/* Selected card */}
+      {value && !savedId && (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+          <div className="px-2.5 py-1.5 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="font-mono text-[10px]" style={{ color: 'var(--accent)' }}>📌 {lat}, {lon}</span>
             <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
-              className="text-xs font-mono px-2 py-0.5 rounded"
-              style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
-              📍 {lat}, {lon} ↗
-            </a>
-            <button onClick={() => { onChange(''); setResolvedName(''); setSavedId(null); setShowAptDetails(false); }}
-              className="text-xs" style={{ color: 'var(--text-muted)' }}>×</button>
+              className="ml-auto font-mono text-[10px] underline" style={{ color: 'var(--text-muted)' }}>OSM ↗</a>
+            <button type="button" onClick={clear}
+              className="w-4 h-4 flex items-center justify-center rounded hover:bg-[var(--border)] transition-colors text-[10px]"
+              style={{ color: 'var(--text-muted)' }}>✕</button>
           </div>
 
-          {entityId && showAptDetails && !savedId && (
-            <div className="rounded p-2.5 space-y-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <button type="button" onClick={() => setIsPrivate(v => !v)}
-                  className="w-7 h-3.5 rounded-full flex items-center px-0.5 shrink-0 transition-colors"
-                  style={{ background: isPrivate ? 'var(--accent)' : 'var(--border)' }}>
-                  <div className="w-2.5 h-2.5 rounded-full bg-white transition-transform"
-                    style={{ transform: isPrivate ? 'translateX(14px)' : 'translateX(0)' }} />
-                </button>
-                <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>
-                  🏠 {lang === 'ru' ? 'Частный дом' : 'Private house'}
+          {entityId && isBuilding && (
+            <div className="px-2.5 py-2 space-y-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <button type="button" onClick={() => setIsPrivate(v => !v)}
+                className="flex items-center gap-2 w-full">
+                <div className="w-7 h-3.5 rounded-full flex items-center px-0.5 shrink-0 transition-all"
+                  style={{ background: isPrivate ? '#a78bfa' : 'var(--border)' }}>
+                  <div className="w-2.5 h-2.5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: isPrivate ? 'translateX(13px)' : 'translateX(0)' }} />
+                </div>
+                <span className="font-mono text-xs transition-colors"
+                  style={{ color: isPrivate ? '#a78bfa' : 'var(--text-muted)' }}>
+                  {lang === 'ru' ? 'Частный дом' : 'Private house'}
                 </span>
-              </label>
-
+              </button>
               {!isPrivate && (
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { key: 'entrance', val: entrance, set: setEntrance, ru: 'Подъезд', en: 'Entrance', t: 'text' },
-                    { key: 'floor', val: floor, set: setFloor, ru: 'Этаж', en: 'Floor', t: 'number' },
-                    { key: 'apartment', val: apartment, set: setApartment, ru: 'Квартира', en: 'Apartment', t: 'text' },
-                    { key: 'intercom', val: intercom, set: setIntercom, ru: 'Домофон', en: 'Intercom', t: 'text' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="text-[10px] font-mono block mb-0.5" style={{ color: 'var(--text-muted)' }}>
-                        {lang === 'ru' ? f.ru : f.en}
-                      </label>
-                      <input type={f.t} value={f.val} onChange={e => f.set(e.target.value)}
-                        className="w-full px-1.5 py-0.5 rounded font-mono text-xs outline-none border"
-                        style={{ background: 'var(--bg-main)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }} />
+                    { lbl: lang==='ru'?'Подъезд':'Entrance', v: entrance, fn: setEntrance, t: 'text' },
+                    { lbl: lang==='ru'?'Этаж':'Floor',       v: floor,    fn: setFloor,    t: 'number' },
+                    { lbl: lang==='ru'?'Квартира':'Apt',     v: apartment,fn: setApartment,t: 'text' },
+                    { lbl: lang==='ru'?'Домофон':'Intercom', v: intercom, fn: setIntercom, t: 'text' },
+                  ].map((f,i) => (
+                    <div key={i}>
+                      <div className="font-mono text-[10px] mb-0.5" style={{ color: 'var(--text-muted)' }}>{f.lbl}</div>
+                      <input type={f.t} value={f.v} onChange={e => f.fn(e.target.value)} className={smallInputCls} />
                     </div>
                   ))}
                 </div>
               )}
-
-              <button type="button" onClick={handleSave} disabled={saving}
-                className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs w-full disabled:opacity-50 transition-all"
-                style={{ background: '#a78bfa20', color: '#a78bfa', border: '1px solid #a78bfa60' }}>
-                {saving ? '…' : '📍'}
-                {saving
-                  ? (lang === 'ru' ? 'Создаю...' : 'Creating...')
-                  : (lang === 'ru' ? 'Создать как сущность «Адрес»' : 'Save as Address entity')}
-              </button>
             </div>
           )}
 
-          {savedId && (
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs"
-              style={{ background: '#1a3a2a', color: '#4ade80', border: '1px solid #166534' }}>
-              <span>✓ {lang === 'ru' ? 'Адрес привязан' : 'Address linked'}</span>
-              <a href={`/entities/${savedId}`} className="ml-auto underline text-[10px]" style={{ color: '#4ade80' }}>
-                {lang === 'ru' ? 'Открыть' : 'Open'} ↗
-              </a>
-            </div>
+          {entityId && (
+            <button type="button" onClick={save} disabled={saving}
+              className="w-full px-2.5 py-2 font-mono text-xs disabled:opacity-50 transition-opacity hover:opacity-80"
+              style={{ color: '#a78bfa', background: '#a78bfa0e' }}>
+              {saving ? '…' : `+ ${lang==='ru'?'Создать и привязать сущность «Адрес»':'Create and link Address entity'}`}
+            </button>
           )}
         </div>
       )}
 
-      {/* ── 3. Search input ── */}
-      <div className="flex gap-1">
-        <input
-          value={address}
-          onChange={e => handleInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && doSearch(address)}
-          placeholder={lang === 'ru' ? 'Адрес...' : 'Address...'}
-          className="flex-1 px-2 py-1 rounded font-mono text-xs outline-none border"
-          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
-        />
-        <button onClick={() => doSearch(address)} disabled={searching || !address.trim()}
-          className="px-2 py-1 rounded font-mono text-xs disabled:opacity-40"
-          style={{ background: 'var(--accent)', color: 'var(--bg-main)' }}>
-          {searching ? '…' : '🔍'}
-        </button>
-      </div>
-      {open && results.length > 0 && (
-        <div className="rounded overflow-hidden shadow-xl" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
-          {results.map((r, i) => (
-            <button key={i} onClick={() => select(r)}
-              className="w-full px-2 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex flex-col"
-              style={{ borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none' }}>
-              <span style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
-              <span style={{ color: 'var(--text-muted)' }}>{parseFloat(r.lat).toFixed(6)}, {parseFloat(r.lon).toFixed(6)}</span>
-            </button>
-          ))}
+      {/* Linked confirmation */}
+      {savedId && (
+        <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg font-mono text-xs"
+          style={{ background: '#4ade8012', border: '1px solid #4ade8030', color: '#4ade80' }}>
+          <span>✓</span>
+          <span>{lang === 'ru' ? 'Адрес привязан' : 'Address linked'}</span>
+          <a href={`/entities/${savedId}`} className="ml-auto underline text-[10px]" style={{ color: '#4ade80' }}>
+            {lang === 'ru' ? 'Открыть' : 'Open'} ↗
+          </a>
+        </div>
+      )}
+
+      {/* Existing addresses */}
+      {entityId && addressEntities.length > 0 && !savedId && (
+        <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+          <div className="px-2.5 py-1.5 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ru' ? 'Существующие' : 'Existing'}
+            </span>
+            <input value={addrFilter} onChange={e => setAddrFilter(e.target.value)}
+              placeholder={lang === 'ru' ? 'фильтр...' : 'filter...'}
+              className="ml-auto w-20 px-1.5 py-0.5 rounded font-mono text-[10px] outline-none border bg-[var(--bg-main)] border-[var(--border-light)] text-[var(--text-primary)]" />
+          </div>
+          <div className="max-h-24 overflow-y-auto">
+            {filteredExisting.map((e:any) => {
+              const m = (e.metadata||{}) as Record<string,string>;
+              return (
+                <button key={e.id} type="button" onClick={() => linkTo(e.id)}
+                  className="w-full px-2.5 py-1.5 text-left hover:bg-[var(--bg-card)] transition-colors flex items-center gap-1.5"
+                  style={{ borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: '#a78bfa', fontSize: 12 }}>📍</span>
+                  <span className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>{e.value}</span>
+                  {m.is_private === 'true' && <span className="ml-auto shrink-0 text-xs">🏠</span>}
+                  {m.apartment && (
+                    <span className="ml-auto font-mono text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>
+                      {lang === 'ru' ? 'кв.' : 'apt'} {m.apartment}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
