@@ -87,19 +87,31 @@ export default function CreateEntity() {
         if (!f.is_relation) return;
         const relType = f.relation_type || 'linked_to';
         const dir = f.relation_direction || 'this_to_other';
+        const makeRel = (a: string, b: string) =>
+          createRelationship({ source_entity_id: a, target_entity_id: b, type: relType });
         if (f.field_type === 'entity') {
           const targetId = schemaValues[f.name];
           if (targetId) {
-            const src = dir === 'other_to_this' ? targetId : entity.id;
-            const tgt = dir === 'other_to_this' ? entity.id : targetId;
-            createRelationship({ source_entity_id: src, target_entity_id: tgt, type: relType });
+            if (dir === 'bidirectional') {
+              makeRel(entity.id, targetId);
+              makeRel(targetId, entity.id);
+            } else {
+              const src = dir === 'other_to_this' ? targetId : entity.id;
+              const tgt = dir === 'other_to_this' ? entity.id : targetId;
+              makeRel(src, tgt);
+            }
           }
         } else if (f.field_type === 'entities') {
           const ids = (schemaValues[f.name] || '').split(',').filter(Boolean);
           ids.forEach((tid: string) => {
-            const src = dir === 'other_to_this' ? tid : entity.id;
-            const tgt = dir === 'other_to_this' ? entity.id : tid;
-            createRelationship({ source_entity_id: src, target_entity_id: tgt, type: relType });
+            if (dir === 'bidirectional') {
+              makeRel(entity.id, tid);
+              makeRel(tid, entity.id);
+            } else {
+              const src = dir === 'other_to_this' ? tid : entity.id;
+              const tgt = dir === 'other_to_this' ? entity.id : tid;
+              makeRel(src, tgt);
+            }
           });
         }
       });
@@ -180,13 +192,31 @@ export default function CreateEntity() {
         });
       }
       metaFields.forEach(({ key, value: v }) => { if (key.trim()) m[key.trim()] = v; });
-      // Auto-compose value for address if not entered
-      if (!value.trim() && type === 'address') {
-        const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k]).filter(Boolean);
-        entityValue = parts.join(', ') || (lang === 'ru' ? 'Адрес' : 'Address');
-      } else {
-        if (!value.trim()) return;
+      if (value.trim()) {
         entityValue = value.trim();
+      } else {
+        // Auto-compose value from schema/preset fields, fallback to type label
+        if (type === 'address') {
+          const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k] as string).filter(Boolean);
+          entityValue = parts.join(', ');
+        }
+        if (!entityValue && schemaFields) {
+          for (const f of schemaFields) {
+            const v = schemaValues[f.name];
+            if (v && typeof v === 'string' && v.trim() &&
+                f.field_type !== 'entity' && f.field_type !== 'entities' && f.field_type !== 'geoposition') {
+              entityValue = v.trim();
+              break;
+            }
+          }
+        }
+        if (!entityValue && presetFields) {
+          for (const f of presetFields) {
+            const v = schemaValues[f.key];
+            if (v && typeof v === 'string' && v.trim()) { entityValue = v.trim(); break; }
+          }
+        }
+        if (!entityValue) entityValue = getLabel(type) || type;
       }
       metadata = Object.keys(m).length > 0 ? m : null;
     }
@@ -197,7 +227,7 @@ export default function CreateEntity() {
   const hasSchemaValues = schemaFields
     ? schemaFields.some(f => schemaValues[f.name]?.trim())
     : (presetFields ? presetFields.some(f => schemaValues[f.key]?.trim()) : false);
-  const canSubmit = isPerson ? true : value.trim().length > 0 || hasSchemaValues;
+  const canSubmit = true;  // value is auto-composed if empty
   const color = getColor(type);
   const customTypes = schemas.filter(s => !s.is_builtin);
 
@@ -543,13 +573,13 @@ export default function CreateEntity() {
 
             <div>
               <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 block">
-                {t.ce_value_label} <span className="text-[#ff4444]">*</span>
+                {t.ce_value_label} <span className="text-[10px] normal-case font-normal" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>({lang === 'ru' ? 'необязательно' : 'optional'})</span>
               </label>
               <input
                 value={value}
                 onChange={e => setValue(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder={`Enter ${getLabel(type)}...`}
+                placeholder={lang === 'ru' ? 'Оставьте пустым — заполнится автоматически' : 'Leave empty — auto-filled from fields'}
                 className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                 style={{ borderColor: value ? `${color}60` : '' }}
               />

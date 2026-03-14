@@ -318,17 +318,27 @@ export default function EntityPage() {
                     if (!schemaDef?.is_relation) return;
                     const relType = schemaDef.relation_type || 'linked_to';
                     const dir = schemaDef.relation_direction || 'this_to_other';
+                    const makeRel1 = (a: string, b: string) =>
+                      addRelMutation.mutate({ source_entity_id: a, target_entity_id: b, type: relType });
                     if (schemaDef.field_type === 'entity' && extrasEdits[k] && extrasEdits[k] !== String(meta[k] || '')) {
-                      const src = dir === 'other_to_this' ? extrasEdits[k] : id!;
-                      const tgt = dir === 'other_to_this' ? id! : extrasEdits[k];
-                      addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
+                      if (dir === 'bidirectional') {
+                        makeRel1(id!, extrasEdits[k]); makeRel1(extrasEdits[k], id!);
+                      } else {
+                        const src = dir === 'other_to_this' ? extrasEdits[k] : id!;
+                        const tgt = dir === 'other_to_this' ? id! : extrasEdits[k];
+                        makeRel1(src, tgt);
+                      }
                     } else if (schemaDef.field_type === 'entities') {
                       const prev = String(meta[k] || '').split(',').filter(Boolean);
                       const next = extrasEdits[k].split(',').filter(Boolean);
                       next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
-                        const src = dir === 'other_to_this' ? tid : id!;
-                        const tgt = dir === 'other_to_this' ? id! : tid;
-                        addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
+                        if (dir === 'bidirectional') {
+                          makeRel1(id!, tid); makeRel1(tid, id!);
+                        } else {
+                          const src = dir === 'other_to_this' ? tid : id!;
+                          const tgt = dir === 'other_to_this' ? id! : tid;
+                          makeRel1(src, tgt);
+                        }
                       });
                     }
                   });
@@ -534,17 +544,23 @@ export default function EntityPage() {
                       if (!sf.is_relation) return;
                       const relType = sf.relation_type || 'linked_to';
                       const dir = sf.relation_direction || 'this_to_other';
+                      const makeRel2 = (a: string, b: string) =>
+                        addRelMutation.mutate({ source_entity_id: a, target_entity_id: b, type: relType });
                       if (sf.field_type === 'entity' && extrasEdits[sf.name] && extrasEdits[sf.name] !== String(meta[sf.name] || '')) {
-                        const src = dir === 'other_to_this' ? extrasEdits[sf.name] : id!;
-                        const tgt = dir === 'other_to_this' ? id! : extrasEdits[sf.name];
-                        addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
+                        if (dir === 'bidirectional') {
+                          makeRel2(id!, extrasEdits[sf.name]); makeRel2(extrasEdits[sf.name], id!);
+                        } else {
+                          makeRel2(dir === 'other_to_this' ? extrasEdits[sf.name] : id!, dir === 'other_to_this' ? id! : extrasEdits[sf.name]);
+                        }
                       } else if (sf.field_type === 'entities') {
                         const prev = String(meta[sf.name] || '').split(',').filter(Boolean);
                         const next = (extrasEdits[sf.name] || '').split(',').filter(Boolean);
                         next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
-                          const src = dir === 'other_to_this' ? tid : id!;
-                          const tgt = dir === 'other_to_this' ? id! : tid;
-                          addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
+                          if (dir === 'bidirectional') {
+                            makeRel2(id!, tid); makeRel2(tid, id!);
+                          } else {
+                            makeRel2(dir === 'other_to_this' ? tid : id!, dir === 'other_to_this' ? id! : tid);
+                          }
                         });
                       }
                     });
