@@ -8,18 +8,19 @@ import type { FieldDefinition, EntityTypeSchemaCreate, EntityTypeSchemaUpdate, E
 import { Plus, X, Trash2, Check, Edit2, Shapes } from 'lucide-react';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
-const FIELD_TYPES = ['text', 'date', 'url', 'number', 'boolean', 'select', 'entity', 'entities'] as const;
+const FIELD_TYPES = ['text', 'date', 'url', 'number', 'boolean', 'select', 'entity', 'entities', 'geoposition'] as const;
 type FT = typeof FIELD_TYPES[number];
 
 const FIELD_TYPE_LABELS: Record<FT, { en: string; ru: string }> = {
-  text:     { en: 'Text',     ru: 'Текст' },
-  date:     { en: 'Date',     ru: 'Дата' },
-  url:      { en: 'URL',      ru: 'Ссылка' },
-  number:   { en: 'Number',   ru: 'Число' },
-  boolean:  { en: 'Boolean',  ru: 'Да/Нет' },
-  select:   { en: 'Select',   ru: 'Список' },
-  entity:   { en: 'Entity',   ru: 'Сущность' },
-  entities: { en: 'Entities', ru: 'Сущности' },
+  text:        { en: 'Text',        ru: 'Текст' },
+  date:        { en: 'Date',        ru: 'Дата' },
+  url:         { en: 'URL',         ru: 'Ссылка' },
+  number:      { en: 'Number',      ru: 'Число' },
+  boolean:     { en: 'Boolean',     ru: 'Да/Нет' },
+  select:      { en: 'Select',      ru: 'Список' },
+  entity:      { en: 'Entity',      ru: 'Сущность' },
+  entities:    { en: 'Entities',    ru: 'Сущности' },
+  geoposition: { en: 'Geoposition', ru: 'Геопозиция' },
 };
 
 const PALETTE = [
@@ -33,6 +34,7 @@ interface FieldRow {
   field_type: FT; required: boolean;
   is_relation?: boolean;
   relation_type?: string;
+  relation_direction?: string;  // "this_to_other" | "other_to_this"
   select_options?: string;  // newline-separated
   entity_type_filter?: string;
 }
@@ -107,6 +109,7 @@ export default function EntityTypesPage() {
         field_type: f.field_type as FT, required: f.required,
         is_relation: f.is_relation || false,
         relation_type: f.relation_type || '',
+        relation_direction: f.relation_direction || '',
         entity_type_filter: f.entity_type_filter || '',
         select_options: (f.select_options || []).join('\n'),
       })));
@@ -141,6 +144,7 @@ export default function EntityTypesPage() {
       };
       if (f.is_relation) fd.is_relation = true;
       if (f.relation_type) fd.relation_type = f.relation_type;
+      if (f.relation_direction) fd.relation_direction = f.relation_direction;
       if (f.entity_type_filter) fd.entity_type_filter = f.entity_type_filter;
       if (f.field_type === 'select' && f.select_options) {
         fd.select_options = f.select_options.split('\n').map(s => s.trim()).filter(Boolean);
@@ -389,6 +393,17 @@ export default function EntityTypesPage() {
                                     {rt.emoji} {lang === 'ru' ? rt.label_ru || rt.label_en : rt.label_en}
                                   </option>
                                 ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                                {lang === 'ru' ? 'Направление связи' : 'Relation direction'}
+                              </label>
+                              <select value={f.relation_direction || 'this_to_other'} onChange={e => updateField(i, 'relation_direction', e.target.value)}
+                                className="w-full px-2 py-1.5 rounded font-mono text-xs outline-none"
+                                style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' }}>
+                                <option value="this_to_other">{lang === 'ru' ? 'Эта → Другая' : 'This → Other'}</option>
+                                <option value="other_to_this">{lang === 'ru' ? 'Другая → Эта' : 'Other → This'}</option>
                               </select>
                             </div>
                             <div>

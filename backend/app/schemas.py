@@ -105,6 +105,7 @@ class FieldDefinition(BaseModel):
     entity_type_filter: Optional[str] = None
     is_relation: Optional[bool] = None
     relation_type: Optional[str] = None
+    relation_direction: Optional[str] = None   # "this_to_other" | "other_to_this"
     select_options: Optional[List[str]] = None
 
 

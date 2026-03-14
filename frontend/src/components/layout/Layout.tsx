@@ -113,9 +113,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           const active = location.pathname === path;
           return (
             <Link key={path} to={path} onClick={closeMobile}
-              className="flex items-center gap-3 px-3 py-2 rounded text-xs font-mono transition-colors"
+              className="flex items-center gap-3 px-3 py-2.5 sm:py-2 rounded text-xs font-mono transition-colors"
               style={itemStyle(active)}>
-              <Icon size={15} />
+              <Icon size={16} />
               <span>{label}</span>
             </Link>
           );
@@ -142,24 +142,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Mobile sidebar drawer */}
-      <aside className={`sm:hidden fixed left-0 top-0 bottom-0 z-50 w-64 flex flex-col border-r transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+      <aside className={`sm:hidden fixed left-0 top-0 bottom-0 z-50 w-72 flex flex-col border-r transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <NavContent />
       </aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile top bar */}
-        <div className="sm:hidden flex items-center gap-3 px-4 py-3 border-b flex-shrink-0" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-          <button onClick={() => setMobileOpen(true)} style={{ color: 'var(--text-muted)' }}>
-            <Menu size={20} />
+        <div className="sm:hidden flex items-center gap-3 px-4 border-b flex-shrink-0"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', paddingTop: 'max(12px, env(safe-area-inset-top))', paddingBottom: '12px' }}>
+          <button onClick={() => setMobileOpen(true)} style={{ color: 'var(--text-muted)' }}
+            className="p-1 -ml-1 rounded-lg" aria-label="Open menu">
+            <Menu size={22} />
           </button>
           <div className="flex items-center gap-2 flex-1">
             <Cpu size={16} style={{ color: 'var(--accent)' }} />
             <span className="text-xs font-mono font-semibold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>OSINT Graph</span>
           </div>
-          <button onClick={openSearch} style={{ color: 'var(--text-muted)' }}>
-            <Search size={18} />
+          <button onClick={openSearch} style={{ color: 'var(--text-muted)' }}
+            className="p-1 -mr-1 rounded-lg" aria-label="Search">
+            <Search size={20} />
           </button>
         </div>
 

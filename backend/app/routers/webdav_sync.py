@@ -19,6 +19,7 @@ from typing import Optional
 from ..database import get_db
 from .. import models
 from ..deps import get_current_user
+from ..crud import _get_enc_key, _enc
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -87,7 +88,7 @@ def _build_backup_zip(db: Session) -> bytes:
     return buf.read()
 
 
-def _merge_backup_zip(zip_bytes: bytes, db: Session) -> dict:
+def _merge_backup_zip(zip_bytes: bytes, db: Session, user: models.User) -> dict:
     """Merge a backup zip into current DB. Returns stats."""
 
     try:
@@ -109,17 +110,25 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session) -> dict:
             b64 = base64.b64encode(raw).decode()
             photo_map[entity_id] = f"data:image/{ext};base64,{b64}"
 
+    enc_key = _get_enc_key(user)
     stats = {"entities": 0, "relationships": 0, "schemas": 0, "skipped": 0}
 
-    existing_schema_names = {s.name for s in db.query(models.EntityTypeSchema).all()}
-    for s in data.get("schemas", []):
+    # Schemas — filter by user_id
+    existing_schema_names = {
+        s.name for s in db.query(models.EntityTypeSchema)
+        .filter(models.EntityTypeSchema.user_id == user.id).all()
+    }
+    # Support both new and legacy key
+    for s in (data.get("entity_type_schemas") or data.get("schemas") or []):
         if s.get("is_builtin") or s["name"] in existing_schema_names:
             stats["skipped"] += 1
             continue
+        fields_raw = s.get("fields", "[]")
+        fields_json = json.dumps(fields_raw) if isinstance(fields_raw, list) else fields_raw
         new_s = models.EntityTypeSchema(
-            id=s["id"], name=s["name"], label_en=s["label_en"],
+            id=s["id"], user_id=user.id, name=s["name"], label_en=s["label_en"],
             label_ru=s.get("label_ru"), icon=s.get("icon"), color=s.get("color"),
-            fields=s.get("fields", "[]"), is_builtin=False,
+            fields=fields_json, is_builtin=False,
         )
         try:
             db.add(new_s); db.commit(); stats["schemas"] += 1
@@ -138,10 +147,15 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session) -> dict:
                 meta["photo"] = photo_map[eid]
             else:
                 meta.pop("photo", None)
+        meta_json = json.dumps(meta, ensure_ascii=False) if meta else None
+        value = e.get("value") or ""
+        notes = e.get("notes") or None
         new_e = models.Entity(
-            id=e["id"], type=e["type"], value=e["value"],
-            metadata_=json.dumps(meta, ensure_ascii=False) if meta else None,
-            notes=e.get("notes") or None, canvas_layout=e.get("canvas_layout") or None,
+            id=e["id"], user_id=user.id, type=e["type"],
+            value=_enc(enc_key, value),
+            metadata_=_enc(enc_key, meta_json) if meta_json else None,
+            notes=_enc(enc_key, notes) if notes else None,
+            canvas_layout=e.get("canvas_layout") or None,
         )
         if e.get("created_at"):
             try: new_e.created_at = datetime.fromisoformat(e["created_at"])
@@ -160,9 +174,13 @@ def _merge_backup_zip(zip_bytes: bytes, db: Session) -> dict:
         if r["source_entity_id"] not in all_entity_ids or r["target_entity_id"] not in all_entity_ids:
             stats["skipped"] += 1
             continue
+        notes = r.get("notes") or None
         new_r = models.Relationship(
-            id=r["id"], source_entity_id=r["source_entity_id"],
-            target_entity_id=r["target_entity_id"], type=r["type"],
+            id=r["id"], user_id=user.id,
+            source_entity_id=r["source_entity_id"],
+            target_entity_id=r["target_entity_id"],
+            type=r["type"],
+            notes=_enc(enc_key, notes) if notes else None,
         )
         if r.get("created_at"):
             try: new_r.created_at = datetime.fromisoformat(r["created_at"])
@@ -225,7 +243,7 @@ def pull_from_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db), user: mod
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Pull failed: {str(e)}")
 
-    stats = _merge_backup_zip(zip_bytes, db)
+    stats = _merge_backup_zip(zip_bytes, db, user)
     return {"ok": True, "merged": stats}
 
 
@@ -241,7 +259,7 @@ def sync_webdav(cfg: WebDAVConfig, db: Session = Depends(get_db), user: models.U
         req = urllib.request.Request(url, method="GET")
         with opener.open(req, timeout=60) as resp:
             zip_bytes = resp.read()
-        pull_result = _merge_backup_zip(zip_bytes, db)
+        pull_result = _merge_backup_zip(zip_bytes, db, user)
     except urllib.error.HTTPError as e:
         if e.code != 404:
             raise HTTPException(status_code=502, detail=f"Pull failed: {e.code} {e.reason}")

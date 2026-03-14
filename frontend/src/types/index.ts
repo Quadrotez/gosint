@@ -2,11 +2,12 @@ export interface FieldDefinition {
   name: string;
   label_en: string;
   label_ru?: string;
-  field_type: 'text' | 'date' | 'url' | 'number' | 'entity' | 'entities' | 'boolean' | 'select';
+  field_type: 'text' | 'date' | 'url' | 'number' | 'entity' | 'entities' | 'boolean' | 'select' | 'geoposition';
   required: boolean;
   entity_type_filter?: string;  // filter by entity type for entity/entities fields
   is_relation?: boolean;        // if true, entity/entities field also creates a graph relationship
   relation_type?: string;       // which relationship type to auto-create
+  relation_direction?: string;  // "this_to_other" | "other_to_this"
   select_options?: string[];    // options for 'select' field type
 }
 

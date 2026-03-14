@@ -77,12 +77,21 @@ export default function CreateEntity() {
       fields.forEach((f: any) => {
         if (!f.is_relation) return;
         const relType = f.relation_type || 'linked_to';
+        const dir = f.relation_direction || 'this_to_other';
         if (f.field_type === 'entity') {
           const targetId = schemaValues[f.name];
-          if (targetId) createRelationship({ source_entity_id: entity.id, target_entity_id: targetId, type: relType });
+          if (targetId) {
+            const src = dir === 'other_to_this' ? targetId : entity.id;
+            const tgt = dir === 'other_to_this' ? entity.id : targetId;
+            createRelationship({ source_entity_id: src, target_entity_id: tgt, type: relType });
+          }
         } else if (f.field_type === 'entities') {
           const ids = (schemaValues[f.name] || '').split(',').filter(Boolean);
-          ids.forEach((tid: string) => createRelationship({ source_entity_id: entity.id, target_entity_id: tid, type: relType }));
+          ids.forEach((tid: string) => {
+            const src = dir === 'other_to_this' ? tid : entity.id;
+            const tgt = dir === 'other_to_this' ? entity.id : tid;
+            createRelationship({ source_entity_id: src, target_entity_id: tgt, type: relType });
+          });
         }
       });
       navigate(`/entities/${entity.id}`);
@@ -542,6 +551,18 @@ export default function CreateEntity() {
                         />
                       );
                     }
+                    if (f.field_type === 'geoposition') {
+                      return (
+                        <GeoPositionPicker
+                          key={f.name}
+                          label={label}
+                          required={f.required}
+                          value={schemaValues[f.name] || ''}
+                          onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                          lang={lang}
+                        />
+                      );
+                    }
                     return (
                       <div key={f.name}>
                         <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 block">
@@ -900,6 +921,126 @@ function EntitiesFieldPicker({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── GeoPositionPicker: address search via Nominatim (OSM), stores lat,lon ────
+
+interface GeoPositionPickerProps {
+  label: string;
+  required: boolean;
+  value: string;        // stored as "lat,lon"
+  onChange: (v: string) => void;
+  lang: string;
+}
+
+function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositionPickerProps) {
+  const [address, setAddress] = useState('');
+  const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState('');
+
+  // Parse stored coords for display
+  const displayCoords = value ? value : '';
+  const [lat, lon] = value ? value.split(',') : ['', ''];
+
+  const osmUrl = value
+    ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16`
+    : null;
+
+  const search = async () => {
+    if (!address.trim()) return;
+    setSearching(true);
+    setError('');
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=5`;
+      const res = await fetch(url, { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } });
+      const data = await res.json();
+      setResults(data);
+      setOpen(true);
+      if (data.length === 0) setError(lang === 'ru' ? 'Ничего не найдено' : 'No results found');
+    } catch {
+      setError(lang === 'ru' ? 'Ошибка запроса' : 'Search failed');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const select = (r: { display_name: string; lat: string; lon: string }) => {
+    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
+    setAddress(r.display_name);
+    setOpen(false);
+    setResults([]);
+  };
+
+  const clear = () => { onChange(''); setAddress(''); setResults([]); setOpen(false); };
+
+  return (
+    <div>
+      <label className="text-xs font-mono text-[var(--text-muted)] mb-1.5 flex items-center gap-1">
+        📍 {label}{required && <span className="text-[#ff4444]">*</span>}
+      </label>
+
+      {/* Coords display + OSM link */}
+      {displayCoords && (
+        <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg text-xs font-mono"
+          style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
+          <span style={{ color: 'var(--accent)' }}>📌 {displayCoords}</span>
+          <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
+            className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>
+            OSM ↗
+          </a>
+          <button onClick={clear} className="text-[var(--text-muted)] hover:text-[#ff4444]">×</button>
+        </div>
+      )}
+
+      {/* Search input */}
+      <div className="flex gap-2">
+        <input
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder={lang === 'ru' ? 'Введите адрес для поиска...' : 'Enter address to search...'}
+          className="flex-1 px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
+        />
+        <button
+          onClick={search}
+          disabled={searching || !address.trim()}
+          className="px-4 py-2.5 rounded-lg font-mono text-xs transition-all disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: 'var(--bg-main)' }}>
+          {searching ? '…' : lang === 'ru' ? 'Найти' : 'Search'}
+        </button>
+      </div>
+
+      {error && <p className="mt-1 text-xs font-mono" style={{ color: '#f87171' }}>{error}</p>}
+
+      {/* Results dropdown */}
+      {open && results.length > 0 && (
+        <div className="mt-1 rounded-lg overflow-hidden shadow-xl"
+          style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+          {results.map((r, i) => (
+            <button key={i} onClick={() => select(r)}
+              className="w-full px-3 py-2.5 text-left font-mono text-xs hover:bg-[var(--border)] flex flex-col gap-0.5"
+              style={{ borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
+              <span style={{ color: 'var(--text-muted)' }}>{parseFloat(r.lat).toFixed(6)}, {parseFloat(r.lon).toFixed(6)}</span>
+            </button>
+          ))}
+          <button onClick={() => setOpen(false)}
+            className="w-full px-3 py-2 text-xs font-mono text-center"
+            style={{ color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+            {lang === 'ru' ? 'Закрыть' : 'Close'}
+          </button>
+        </div>
+      )}
+
+      <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
+        {lang === 'ru'
+          ? 'Данные геолокации © OpenStreetMap'
+          : 'Geocoding data © OpenStreetMap contributors'}
+      </p>
     </div>
   );
 }

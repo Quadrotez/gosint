@@ -193,9 +193,14 @@ export default function SettingsPage() {
     try {
       const result = await importBackup(file);
       const s = result.imported;
-      toast.success(lang === 'ru'
-        ? `Импортировано: ${s.entities} сущ., ${s.relationships} связей (пропущено: ${s.skipped})`
-        : `Imported: ${s.entities} entities, ${s.relationships} rels (skipped: ${s.skipped})`);
+      const parts = [];
+      if (s.entities)                  parts.push(lang === 'ru' ? `${s.entities} сущ.`        : `${s.entities} entities`);
+      if (s.relationships)             parts.push(lang === 'ru' ? `${s.relationships} связей`  : `${s.relationships} rels`);
+      if (s.entity_type_schemas)       parts.push(lang === 'ru' ? `${s.entity_type_schemas} типов сущ.` : `${s.entity_type_schemas} entity types`);
+      if (s.relationship_type_schemas) parts.push(lang === 'ru' ? `${s.relationship_type_schemas} типов связей` : `${s.relationship_type_schemas} rel types`);
+      if (s.entity_groups)             parts.push(lang === 'ru' ? `${s.entity_groups} групп`   : `${s.entity_groups} groups`);
+      const skipped = s.skipped ? (lang === 'ru' ? ` (пропущено: ${s.skipped}, перезаписано: ${s.overwritten || 0})` : ` (skipped: ${s.skipped}, overwritten: ${s.overwritten || 0})`) : '';
+      toast.success((lang === 'ru' ? 'Импортировано: ' : 'Imported: ') + (parts.join(', ') || '0') + skipped);
     } catch { toast.error(lang === 'ru' ? 'Ошибка импорта' : 'Import failed'); }
     finally { setBackupLoading(false); }
   };
@@ -264,8 +269,8 @@ export default function SettingsPage() {
         <Section icon={Download} title={lang === 'ru' ? 'Резервная копия базы данных' : 'Database Backup'}>
           <p className="text-xs font-mono text-[var(--text-muted)] mb-4">
             {lang === 'ru'
-              ? 'Экспорт сохраняет все сущности, связи, схемы и фотографии в один ZIP-файл. При импорте дубликаты пропускаются.'
-              : 'Export saves all entities, relationships, schemas and photos into one ZIP. On import, duplicates are skipped.'}
+              ? 'Экспорт сохраняет все сущности, связи, типы сущностей, типы связей, группы и фотографии в один ZIP-файл. При импорте: если тип уже существует с такими же полями — пропускается; если поля отличаются — перезаписывается. Сущности с совпадающим ID пропускаются (умный merge).'
+              : 'Export saves all entities, relationships, entity type schemas, relationship type schemas, groups and photos into one ZIP. On import: if a type already exists with matching fields it is skipped; if fields differ it is overwritten. Entities with matching IDs are skipped (smart merge).'}
           </p>
           <div className="flex flex-wrap gap-3">
             <button onClick={handleExport} disabled={backupLoading}

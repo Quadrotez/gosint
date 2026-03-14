@@ -316,13 +316,18 @@ export default function EntityPage() {
                     const schemaDef = customSchema?.fields?.find((f: any) => f.name === k);
                     if (!schemaDef?.is_relation) return;
                     const relType = schemaDef.relation_type || 'linked_to';
+                    const dir = schemaDef.relation_direction || 'this_to_other';
                     if (schemaDef.field_type === 'entity' && extrasEdits[k] && extrasEdits[k] !== String(meta[k] || '')) {
-                      addRelMutation.mutate({ source_entity_id: id!, target_entity_id: extrasEdits[k], type: relType });
+                      const src = dir === 'other_to_this' ? extrasEdits[k] : id!;
+                      const tgt = dir === 'other_to_this' ? id! : extrasEdits[k];
+                      addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
                     } else if (schemaDef.field_type === 'entities') {
                       const prev = String(meta[k] || '').split(',').filter(Boolean);
                       const next = extrasEdits[k].split(',').filter(Boolean);
                       next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
-                        addRelMutation.mutate({ source_entity_id: id!, target_entity_id: tid, type: relType });
+                        const src = dir === 'other_to_this' ? tid : id!;
+                        const tgt = dir === 'other_to_this' ? id! : tid;
+                        addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
                       });
                     }
                   });
@@ -396,6 +401,12 @@ export default function EntityPage() {
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
                                   entities={allEntities}
                                   schemas={schemas}
+                                  lang={lang}
+                                />
+                              ) : ftype === 'geoposition' ? (
+                                <InlineGeoPicker
+                                  value={extrasEdits[k] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [k]: v }))}
                                   lang={lang}
                                 />
                               ) : (
@@ -520,14 +531,19 @@ export default function EntityPage() {
                     schemaFields.forEach((sf: any) => {
                       if (!sf.is_relation) return;
                       const relType = sf.relation_type || 'linked_to';
+                      const dir = sf.relation_direction || 'this_to_other';
                       if (sf.field_type === 'entity' && extrasEdits[sf.name] && extrasEdits[sf.name] !== String(meta[sf.name] || '')) {
-                        addRelMutation.mutate({ source_entity_id: id!, target_entity_id: extrasEdits[sf.name], type: relType });
+                        const src = dir === 'other_to_this' ? extrasEdits[sf.name] : id!;
+                        const tgt = dir === 'other_to_this' ? id! : extrasEdits[sf.name];
+                        addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
                       } else if (sf.field_type === 'entities') {
                         const prev = String(meta[sf.name] || '').split(',').filter(Boolean);
                         const next = (extrasEdits[sf.name] || '').split(',').filter(Boolean);
-                        next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) =>
-                          addRelMutation.mutate({ source_entity_id: id!, target_entity_id: tid, type: relType })
-                        );
+                        next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
+                          const src = dir === 'other_to_this' ? tid : id!;
+                          const tgt = dir === 'other_to_this' ? id! : tid;
+                          addRelMutation.mutate({ source_entity_id: src, target_entity_id: tgt, type: relType });
+                        });
                       }
                     });
                     setEditingExtras(false);
@@ -597,6 +613,12 @@ export default function EntityPage() {
                                   onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
                                   entities={allEntities}
                                   schemas={schemas}
+                                  lang={lang}
+                                />
+                              ) : field.type === 'geoposition' ? (
+                                <InlineGeoPicker
+                                  value={extrasEdits[field.key] ?? ''}
+                                  onChange={v => setExtrasEdits(prev => ({ ...prev, [field.key]: v }))}
                                   lang={lang}
                                 />
                               ) : (
@@ -1217,7 +1239,20 @@ function EntityFieldDisplay({
     );
   }
 
-  return <span className="text-xs font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>;
+  if (fieldType === 'geoposition') {
+    const parts = value.split(',');
+    const lat = parts[0]?.trim();
+    const lon = parts[1]?.trim();
+    if (!lat || !lon) return <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>—</span>;
+    const osmUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16`;
+    return (
+      <a href={osmUrl} target="_blank" rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-xs transition-colors hover:opacity-80"
+        style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+        📍 {lat}, {lon} ↗
+      </a>
+    );
+  }
 }
 
 // ── Inline entity picker for EntityPage edit mode ────────────────────────────
@@ -1456,6 +1491,82 @@ function EntityIconPicker({ currentIcon, defaultIcon, onChange, lang }: {
             )}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── InlineGeoPicker: compact geo editor for EntityPage ──────────────────────
+
+function InlineGeoPicker({ value, onChange, lang }: {
+  value: string; onChange: (v: string) => void; lang: string;
+}) {
+  const [address, setAddress] = useState('');
+  const [results, setResults] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const [lat, lon] = value ? value.split(',') : ['', ''];
+  const osmUrl = value ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16` : null;
+
+  const doSearch = async () => {
+    if (!address.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=5`,
+        { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } }
+      );
+      setResults(await res.json());
+      setOpen(true);
+    } catch { /* ignore */ }
+    finally { setSearching(false); }
+  };
+
+  const select = (r: { display_name: string; lat: string; lon: string }) => {
+    onChange(`${parseFloat(r.lat).toFixed(6)},${parseFloat(r.lon).toFixed(6)}`);
+    setAddress(r.display_name);
+    setOpen(false);
+  };
+
+  return (
+    <div className="space-y-1">
+      {value && (
+        <div className="flex items-center gap-2">
+          <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
+            className="text-xs font-mono px-2 py-0.5 rounded"
+            style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+            📍 {lat}, {lon} ↗
+          </a>
+          <button onClick={() => onChange('')} className="text-xs" style={{ color: 'var(--text-muted)' }}>×</button>
+        </div>
+      )}
+      <div className="flex gap-1">
+        <input
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && doSearch()}
+          placeholder={lang === 'ru' ? 'Адрес...' : 'Address...'}
+          className="flex-1 px-2 py-1 rounded font-mono text-xs outline-none border"
+          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-primary)' }}
+        />
+        <button onClick={doSearch} disabled={searching || !address.trim()}
+          className="px-2 py-1 rounded font-mono text-xs disabled:opacity-40"
+          style={{ background: 'var(--accent)', color: 'var(--bg-main)' }}>
+          {searching ? '…' : '🔍'}
+        </button>
+      </div>
+      {open && results.length > 0 && (
+        <div className="rounded overflow-hidden shadow-xl" style={{ border: '1px solid var(--border-light)', background: 'var(--bg-secondary)' }}>
+          {results.map((r, i) => (
+            <button key={i} onClick={() => select(r)}
+              className="w-full px-2 py-1.5 text-left font-mono text-xs hover:bg-[var(--border)] flex flex-col"
+              style={{ borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ color: 'var(--text-primary)' }}>{r.display_name}</span>
+              <span style={{ color: 'var(--text-muted)' }}>{parseFloat(r.lat).toFixed(6)}, {parseFloat(r.lon).toFixed(6)}</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
