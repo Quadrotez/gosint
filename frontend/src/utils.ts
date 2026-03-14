@@ -147,12 +147,13 @@ export function getTypeLabel(
   lang: 'en' | 'ru',
   customSchemas?: EntityTypeSchema[]
 ): string {
-  const builtin = BUILTIN_TYPE_LABELS[type];
-  if (builtin) return lang === 'ru' ? builtin.ru : builtin.en;
+  // DB schema takes priority so user edits to builtin labels are respected
   if (customSchemas) {
     const s = customSchemas.find(s => s.name === type);
     if (s) return lang === 'ru' && s.label_ru ? s.label_ru : s.label_en;
   }
+  const builtin = BUILTIN_TYPE_LABELS[type];
+  if (builtin) return lang === 'ru' ? builtin.ru : builtin.en;
   return type;
 }
 
@@ -160,11 +161,12 @@ export function getEntityColor(
   type: string,
   customSchemas?: EntityTypeSchema[]
 ): string {
-  if (ENTITY_COLORS[type]) return ENTITY_COLORS[type];
+  // DB schema takes priority so user edits to builtin colors are respected
   if (customSchemas) {
     const s = customSchemas.find(s => s.name === type);
     if (s?.color) return s.color;
   }
+  if (ENTITY_COLORS[type]) return ENTITY_COLORS[type];
   return '#7a8ba8';
 }
 
@@ -172,11 +174,12 @@ export function getEntityIcon(
   type: string,
   customSchemas?: EntityTypeSchema[]
 ): string {
-  if (ENTITY_ICONS[type]) return ENTITY_ICONS[type];
+  // DB schema takes priority so user edits to builtin icons are respected
   if (customSchemas) {
     const s = customSchemas.find(s => s.name === type);
     if (s?.icon) return s.icon;
   }
+  if (ENTITY_ICONS[type]) return ENTITY_ICONS[type];
   return '◆';
 }
 

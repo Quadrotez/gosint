@@ -220,8 +220,6 @@ async def import_backup(
         .filter(models.EntityTypeSchema.user_id == user_id).all()
     }
     for s in ent_schemas_import:
-        if s.get("is_builtin"):
-            continue
         imported_fields = s.get("fields") or []
         if isinstance(imported_fields, str):
             try:
@@ -231,18 +229,23 @@ async def import_backup(
 
         existing = existing_ent_schemas.get(s["name"])
         if existing:
-            if _fields_match(existing.fields, imported_fields):
+            if _fields_match(existing.fields, imported_fields) and \
+               existing.label_en == s.get("label_en", existing.label_en) and \
+               (existing.label_ru or "") == (s.get("label_ru") or "") and \
+               (existing.icon or "") == (s.get("icon") or "") and \
+               (existing.color or "") == (s.get("color") or ""):
                 stats["skipped"] += 1
                 continue
             existing.label_en   = s.get("label_en", existing.label_en)
-            existing.label_ru   = s.get("label_ru") or existing.label_ru
-            existing.icon       = s.get("icon") or existing.icon
-            existing.color      = s.get("color") or existing.color
-            existing.icon_image = s.get("icon_image") or existing.icon_image
-            existing.fields     = json.dumps(imported_fields)
+            existing.label_ru   = s.get("label_ru") if s.get("label_ru") is not None else existing.label_ru
+            existing.icon       = s.get("icon") if s.get("icon") is not None else existing.icon
+            existing.color      = s.get("color") if s.get("color") is not None else existing.color
+            existing.icon_image = s.get("icon_image") if s.get("icon_image") is not None else existing.icon_image
+            existing.fields     = json.dumps(imported_fields) if imported_fields is not None else existing.fields
             db.flush()
             stats["overwritten"] += 1
         else:
+            # Always create — even builtin schemas that somehow aren't in DB yet
             db.add(models.EntityTypeSchema(
                 id=s["id"],
                 user_id=user_id,
@@ -253,7 +256,7 @@ async def import_backup(
                 color=s.get("color"),
                 icon_image=s.get("icon_image"),
                 fields=json.dumps(imported_fields) if imported_fields else None,
-                is_builtin=False,
+                is_builtin=bool(s.get("is_builtin", False)),
             ))
             db.flush()
             stats["entity_type_schemas"] += 1

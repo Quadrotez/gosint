@@ -6,6 +6,36 @@ import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangProvider';
 import { User, Shield, Clock, HardDrive, Key, Mail, Check, X } from 'lucide-react';
 
+// ── Hoisted outside ProfilePage to prevent remount-on-render focus loss ───────
+
+const cardStyle = { background: 'var(--bg-card)', border: '1px solid var(--border)' };
+const inputStyle = { background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' };
+
+function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-5 mb-4" style={cardStyle}>
+      <div className="flex items-center gap-2 mb-4">
+        <Icon size={15} style={{ color: 'var(--accent)' }} />
+        <span className="font-mono text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+      <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+
 export default function ProfilePage() {
   const { updateUser, logout } = useAuth();
   const { toast } = useToast();
@@ -40,28 +70,7 @@ export default function ProfilePage() {
 
   if (!me) return null;
 
-  const cardStyle = { background: 'var(--bg-card)', border: '1px solid var(--border)' };
   const inputStyle = { background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-primary)' };
-
-  const Section = ({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) => (
-    <div className="rounded-xl p-5 mb-4" style={cardStyle}>
-      <div className="flex items-center gap-2 mb-4">
-        <Icon size={15} style={{ color: 'var(--accent)' }} />
-        <span className="font-mono text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{title}</span>
-      </div>
-      {children}
-    </div>
-  );
-
-  const Field = ({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) => (
-    <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--border)' }}>
-      <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>
-        {children}
-      </div>
-    </div>
-  );
 
   const saveUsername = () => {
     if (!username.trim()) return;
@@ -146,18 +155,30 @@ export default function ProfilePage() {
           </button>
         ) : (
           <div className="space-y-3">
-            {[
-              { label: lang === 'ru' ? 'Текущий пароль' : 'Current password', value: currentPwd, set: setCurrentPwd },
-              { label: lang === 'ru' ? 'Новый пароль' : 'New password', value: newPwd, set: setNewPwd },
-              { label: lang === 'ru' ? 'Подтверждение' : 'Confirm new', value: confirmPwd, set: setConfirmPwd },
-            ].map(f => (
-              <div key={f.label}>
-                <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>{f.label}</label>
-                <input type="password" value={f.value} onChange={e => f.set(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none"
-                  style={inputStyle} placeholder="••••••••" />
-              </div>
-            ))}
+            <div>
+              <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Текущий пароль' : 'Current password'}
+              </label>
+              <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none"
+                style={inputStyle} placeholder="••••••••" />
+            </div>
+            <div>
+              <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Новый пароль' : 'New password'}
+              </label>
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none"
+                style={inputStyle} placeholder="••••••••" />
+            </div>
+            <div>
+              <label className="block text-xs font-mono mb-1" style={{ color: 'var(--text-muted)' }}>
+                {lang === 'ru' ? 'Подтверждение' : 'Confirm new'}
+              </label>
+              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none"
+                style={inputStyle} placeholder="••••••••" />
+            </div>
             <div className="flex gap-2 pt-1">
               <button onClick={savePassword} disabled={saveMutation.isPending}
                 className="px-4 py-1.5 rounded-lg font-mono text-sm disabled:opacity-50"

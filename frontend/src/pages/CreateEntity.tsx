@@ -156,13 +156,38 @@ export default function CreateEntity() {
         });
       }
       metaFields.forEach(({ key, value: v }) => { if (key.trim()) m[key.trim()] = v; });
-      // Auto-compose value for address if not entered
-      if (!value.trim() && type === 'address') {
-        const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k]).filter(Boolean);
-        entityValue = parts.join(', ') || (lang === 'ru' ? 'Адрес' : 'Address');
-      } else {
-        if (!value.trim()) return;
+      if (value.trim()) {
         entityValue = value.trim();
+      } else {
+        // Auto-compose value from schema/preset fields or use type label as fallback
+        if (type === 'address') {
+          const parts = ['city', 'street', 'building', 'apartment'].map(k => m[k] as string).filter(Boolean);
+          entityValue = parts.join(', ');
+        }
+        if (!entityValue) {
+          // Use first non-empty schema/preset field value
+          if (schemaFields) {
+            for (const f of schemaFields) {
+              const v = schemaValues[f.name];
+              if (v && typeof v === 'string' && v.trim() && f.field_type !== 'entity' && f.field_type !== 'entities') {
+                entityValue = v.trim();
+                break;
+              }
+            }
+          } else if (presetFields) {
+            for (const f of presetFields) {
+              const v = schemaValues[f.key];
+              if (v && typeof v === 'string' && v.trim()) {
+                entityValue = v.trim();
+                break;
+              }
+            }
+          }
+        }
+        if (!entityValue) {
+          // Final fallback: type label
+          entityValue = getLabel(type) || type;
+        }
       }
       metadata = Object.keys(m).length > 0 ? m : null;
     }
@@ -173,7 +198,7 @@ export default function CreateEntity() {
   const hasSchemaValues = schemaFields
     ? schemaFields.some(f => schemaValues[f.name]?.trim())
     : (presetFields ? presetFields.some(f => schemaValues[f.key]?.trim()) : false);
-  const canSubmit = isPerson ? true : value.trim().length > 0 || hasSchemaValues;
+  const canSubmit = true;
   const color = getColor(type);
   const customTypes = schemas.filter(s => !s.is_builtin);
 
@@ -335,6 +360,16 @@ export default function CreateEntity() {
                   if (f.field_type === 'entities') {
                     return (
                       <EntitiesFieldPicker
+                        key={f.name} label={label} required={f.required}
+                        value={schemaValues[f.name] || ''}
+                        onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
+                        lang={lang}
+                      />
+                    );
+                  }
+                  if (f.field_type === 'geoposition') {
+                    return (
+                      <GeoPositionPicker
                         key={f.name} label={label} required={f.required}
                         value={schemaValues[f.name] || ''}
                         onChange={v => setSchemaValues(prev => ({ ...prev, [f.name]: v }))}
@@ -505,14 +540,17 @@ export default function CreateEntity() {
             </div>
 
             <div>
-              <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 block">
-                {t.ce_value_label} <span className="text-[#ff4444]">*</span>
+              <label className="text-xs font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
+                {t.ce_value_label}
+                <span className="text-[10px] normal-case" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
+                  ({lang === 'ru' ? 'необязательно' : 'optional'})
+                </span>
               </label>
               <input
                 value={value}
                 onChange={e => setValue(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                placeholder={`Enter ${getLabel(type)}...`}
+                placeholder={lang === 'ru' ? 'Оставьте пустым — заполнится из полей автоматически' : 'Leave empty — auto-filled from fields'}
                 className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
                 style={{ borderColor: value ? `${color}60` : '' }}
               />
@@ -941,21 +979,17 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Parse stored coords for display
-  const displayCoords = value ? value : '';
   const [lat, lon] = value ? value.split(',') : ['', ''];
+  const osmUrl = value ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16` : null;
 
-  const osmUrl = value
-    ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=16`
-    : null;
-
-  const search = async () => {
-    if (!address.trim()) return;
+  const doSearch = async (q: string) => {
+    if (!q.trim()) { setResults([]); setOpen(false); return; }
     setSearching(true);
     setError('');
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=5`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`;
       const res = await fetch(url, { headers: { 'Accept-Language': lang === 'ru' ? 'ru' : 'en' } });
       const data = await res.json();
       setResults(data);
@@ -965,6 +999,17 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
       setError(lang === 'ru' ? 'Ошибка запроса' : 'Search failed');
     } finally {
       setSearching(false);
+    }
+  };
+
+  const handleInput = (val: string) => {
+    setAddress(val);
+    setError('');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (val.trim().length >= 3) {
+      debounceRef.current = setTimeout(() => doSearch(val), 400);
+    } else {
+      setResults([]); setOpen(false);
     }
   };
 
@@ -984,10 +1029,10 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
       </label>
 
       {/* Coords display + OSM link */}
-      {displayCoords && (
+      {value && (
         <div className="flex items-center gap-2 mb-2 px-3 py-2 rounded-lg text-xs font-mono"
           style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}>
-          <span style={{ color: 'var(--accent)' }}>📌 {displayCoords}</span>
+          <span style={{ color: 'var(--accent)' }}>📌 {value}</span>
           <a href={osmUrl!} target="_blank" rel="noopener noreferrer"
             className="ml-auto text-[10px] underline" style={{ color: 'var(--accent)' }}>
             OSM ↗
@@ -996,22 +1041,19 @@ function GeoPositionPicker({ label, required, value, onChange, lang }: GeoPositi
         </div>
       )}
 
-      {/* Search input */}
-      <div className="flex gap-2">
+      {/* Search input with inline spinner */}
+      <div className="relative">
         <input
           value={address}
-          onChange={e => setAddress(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && search()}
-          placeholder={lang === 'ru' ? 'Введите адрес для поиска...' : 'Enter address to search...'}
-          className="flex-1 px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
+          onChange={e => handleInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && doSearch(address)}
+          placeholder={lang === 'ru' ? 'Введите адрес (минимум 3 символа)...' : 'Type address (min 3 chars)...'}
+          className="w-full px-3 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border-light)] rounded-lg font-mono text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--border-hover)]"
+          style={{ paddingRight: searching ? '2.5rem' : undefined }}
         />
-        <button
-          onClick={search}
-          disabled={searching || !address.trim()}
-          className="px-4 py-2.5 rounded-lg font-mono text-xs transition-all disabled:opacity-40"
-          style={{ background: 'var(--accent)', color: 'var(--bg-main)' }}>
-          {searching ? '…' : lang === 'ru' ? 'Найти' : 'Search'}
-        </button>
+        {searching && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>…</span>
+        )}
       </div>
 
       {error && <p className="mt-1 text-xs font-mono" style={{ color: '#f87171' }}>{error}</p>}
