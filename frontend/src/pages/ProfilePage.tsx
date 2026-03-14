@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMe, updateMe, getMyStorage } from '../api';
+import { getMe, updateMe, getMyStorage, deleteMyAccount } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLang } from '../i18n/LangProvider';
-import { User, Shield, Clock, HardDrive, Key, Mail, Check, X } from 'lucide-react';
+import { User, Shield, Clock, HardDrive, Key, Mail, Check, X, Trash2 } from 'lucide-react';
 
 export default function ProfilePage() {
   const { updateUser, logout } = useAuth();
@@ -245,12 +245,49 @@ export default function ProfilePage() {
 
       {/* Danger zone */}
       <Section icon={Shield} title={lang === 'ru' ? 'Опасная зона' : 'Danger zone'}>
-        <button
-          onClick={() => { if (confirm(lang === 'ru' ? 'Выйти из аккаунта?' : 'Sign out?')) logout(); }}
-          className="px-4 py-2 rounded-lg font-mono text-sm"
-          style={{ background: '#2d1515', color: '#f87171', border: '1px solid #7f1d1d' }}>
-          {lang === 'ru' ? 'Выйти из аккаунта' : 'Sign out'}
-        </button>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => { if (confirm(lang === 'ru' ? 'Выйти из аккаунта?' : 'Sign out?')) logout(); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm w-fit"
+            style={{ background: '#2d1515', color: '#f87171', border: '1px solid #7f1d1d' }}>
+            {lang === 'ru' ? 'Выйти из аккаунта' : 'Sign out'}
+          </button>
+
+          <div className="pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+            <p className="text-xs font-mono mb-3" style={{ color: 'var(--text-muted)' }}>
+              {lang === 'ru'
+                ? 'Безвозвратно удаляет аккаунт и все данные: сущности, связи, типы, группы. Отменить невозможно.'
+                : 'Permanently deletes the account and all associated data: entities, relationships, types, groups. Cannot be undone.'}
+            </p>
+            <button
+              onClick={async () => {
+                const msg = lang === 'ru'
+                  ? 'Удалить аккаунт? Все данные будут уничтожены. Это нельзя отменить.'
+                  : 'Delete account? All data will be destroyed. This cannot be undone.';
+                if (!confirm(msg)) return;
+                const input = window.prompt(
+                  lang === 'ru'
+                    ? 'Введите своё имя пользователя для подтверждения:'
+                    : 'Type your username to confirm:'
+                );
+                if (input !== me.username) {
+                  toast.error(lang === 'ru' ? 'Имя не совпадает. Отменено.' : 'Username mismatch. Cancelled.');
+                  return;
+                }
+                try {
+                  await deleteMyAccount();
+                  logout();
+                } catch {
+                  toast.error(lang === 'ru' ? 'Ошибка при удалении' : 'Deletion failed');
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm w-fit transition-all"
+              style={{ background: '#3d0a0a', color: '#f87171', border: '1px solid #991b1b' }}>
+              <Trash2 size={14} />
+              {lang === 'ru' ? 'Удалить аккаунт' : 'Delete account'}
+            </button>
+          </div>
+        </div>
       </Section>
     </div>
   );

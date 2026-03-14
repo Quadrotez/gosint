@@ -54,6 +54,12 @@ export const updateMe = (data: {
 export const getMyStorage = () =>
   api.get<StorageInfo>('/auth/me/storage').then(r => r.data);
 
+export const resetMyData = () =>
+  api.delete('/auth/me/data');
+
+export const deleteMyAccount = () =>
+  api.delete('/auth/me');
+
 // ── Public site settings (login page) ────────────────────────────────────────
 
 export const getPublicSettings = () =>

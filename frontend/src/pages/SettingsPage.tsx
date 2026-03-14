@@ -3,12 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Settings, Sun, Moon, Clock, Globe, Check, Download, Upload,
   Cloud, UploadCloud, DownloadCloud, RefreshCw, TestTube, Wifi, WifiOff,
-  Eye, EyeOff, AlertCircle, Zap,
+  Eye, EyeOff, AlertCircle, Zap, Trash2,
 } from 'lucide-react';
 import { useLang } from '../i18n/LangProvider';
 import { useSettings, type Theme, type DateFormat, type DateLocale } from '../context/SettingsContext';
 import { useToast } from '../context/ToastContext';
-import { exportBackup, importBackup, webdavTest, webdavPush, webdavPull, webdavSync, type WebDAVConfig } from '../api';
+import { exportBackup, importBackup, webdavTest, webdavPush, webdavPull, webdavSync, type WebDAVConfig, resetMyData } from '../api';
 
 // ─── HOisted components — must be outside the page component to avoid remounting ──
 
@@ -323,6 +323,41 @@ export default function SettingsPage() {
         </Section>
 
         <WebDAVSection lang={lang} toast={toast} />
+
+        <Section icon={Trash2} title={lang === 'ru' ? 'Сброс хранилища' : 'Reset storage'}>
+          <p className="text-xs font-mono mb-4" style={{ color: 'var(--text-muted)' }}>
+            {lang === 'ru'
+              ? 'Удаляет все сущности, связи, типы сущностей, типы связей и группы. Аккаунт сохраняется. Действие необратимо.'
+              : 'Deletes all entities, relationships, entity/relationship type schemas and groups. Your account is kept. This cannot be undone.'}
+          </p>
+          <button
+            onClick={async () => {
+              const msg = lang === 'ru'
+                ? 'Удалить всё хранилище? Это действие нельзя отменить.'
+                : 'Delete all stored data? This cannot be undone.';
+              if (!confirm(msg)) return;
+              const confirm2 = lang === 'ru'
+                ? 'Вы уверены? Введите «СБРОС» для подтверждения:'
+                : 'Are you sure? Type "RESET" to confirm:';
+              const input = window.prompt(confirm2);
+              if (input !== (lang === 'ru' ? 'СБРОС' : 'RESET')) {
+                toast.error(lang === 'ru' ? 'Отменено' : 'Cancelled');
+                return;
+              }
+              try {
+                await resetMyData();
+                await qc.invalidateQueries();
+                toast.success(lang === 'ru' ? 'Хранилище очищено' : 'Storage cleared');
+              } catch {
+                toast.error(lang === 'ru' ? 'Ошибка при сбросе' : 'Reset failed');
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-sm transition-all"
+            style={{ background: '#2d1515', color: '#f87171', border: '1px solid #7f1d1d' }}>
+            <Trash2 size={14} />
+            {lang === 'ru' ? 'Сбросить хранилище' : 'Reset storage'}
+          </button>
+        </Section>
       </div>
     </div>
   );

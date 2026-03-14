@@ -112,3 +112,40 @@ def get_storage(current_user: models.User = Depends(get_current_user), db: Sessi
         used_bytes=used, used_mb=round(used / 1024 / 1024, 2), limit_mb=limit_mb,
         percent=round(min(used / limit_bytes * 100, 100), 1) if limit_bytes > 0 else 0,
     )
+
+
+@router.delete("/me/data", status_code=204)
+def reset_my_data(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete all user data (entities, relationships, groups, schemas) but keep the account."""
+    uid = current_user.id
+    # Delete in safe order to avoid FK violations
+    db.query(models.EntityGroup).filter(models.EntityGroup.user_id == uid).delete(synchronize_session=False)
+    db.query(models.EntityAttachment).filter(models.EntityAttachment.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Relationship).filter(models.Relationship.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Entity).filter(models.Entity.user_id == uid).delete(synchronize_session=False)
+    db.query(models.RelationshipTypeSchema).filter(models.RelationshipTypeSchema.user_id == uid).delete(synchronize_session=False)
+    db.query(models.EntityTypeSchema).filter(models.EntityTypeSchema.user_id == uid).delete(synchronize_session=False)
+    db.commit()
+    # Re-seed builtin schemas so the app works normally after reset
+    from ..main import _seed_builtin_schemas
+    _seed_builtin_schemas(db, uid)
+
+
+@router.delete("/me", status_code=204)
+def delete_my_account(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete account and all associated data."""
+    uid = current_user.id
+    db.query(models.EntityGroup).filter(models.EntityGroup.user_id == uid).delete(synchronize_session=False)
+    db.query(models.EntityAttachment).filter(models.EntityAttachment.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Relationship).filter(models.Relationship.user_id == uid).delete(synchronize_session=False)
+    db.query(models.Entity).filter(models.Entity.user_id == uid).delete(synchronize_session=False)
+    db.query(models.RelationshipTypeSchema).filter(models.RelationshipTypeSchema.user_id == uid).delete(synchronize_session=False)
+    db.query(models.EntityTypeSchema).filter(models.EntityTypeSchema.user_id == uid).delete(synchronize_session=False)
+    db.delete(current_user)
+    db.commit()
