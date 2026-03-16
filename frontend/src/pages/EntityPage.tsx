@@ -16,6 +16,7 @@ import EntityTypeBadge from '../components/ui/EntityTypeBadge';
 import MetadataEditor from '../components/ui/MetadataEditor';
 import MiniGraph from '../components/graph/MiniGraph';
 import DatePicker from '../components/ui/DatePicker';
+import MarkdownRenderer from '../components/ui/MarkdownRenderer';
 import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink, Search } from 'lucide-react';
 import { getAttachments, uploadAttachment, deleteAttachment, type AttachmentOut } from '../api';
 
