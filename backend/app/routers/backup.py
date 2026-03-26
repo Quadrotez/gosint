@@ -219,6 +219,9 @@ async def import_backup(
         s.name: s for s in db.query(models.EntityTypeSchema)
         .filter(models.EntityTypeSchema.user_id == user_id).all()
     }
+    existing_ent_schemas_by_id = {
+        s.id: s for s in existing_ent_schemas.values()
+    }
     for s in ent_schemas_import:
         imported_fields = s.get("fields") or []
         if isinstance(imported_fields, str):
@@ -228,6 +231,9 @@ async def import_backup(
                 imported_fields = []
 
         existing = existing_ent_schemas.get(s["name"])
+        # Fallback: same id but possibly different name (e.g. previous partial import)
+        if not existing and s.get("id"):
+            existing = existing_ent_schemas_by_id.get(s["id"])
         if existing:
             # Skip only if absolutely nothing changed
             if _fields_match(existing.fields, imported_fields) and \
@@ -268,11 +274,16 @@ async def import_backup(
         s.name: s for s in db.query(models.RelationshipTypeSchema)
         .filter(models.RelationshipTypeSchema.user_id == user_id).all()
     }
+    existing_rel_schemas_by_id = {
+        s.id: s for s in existing_rel_schemas.values()
+    }
     for s in rel_schemas_import:
         if s.get("is_builtin"):
             continue
         imported_fields = s.get("fields") or []
         existing = existing_rel_schemas.get(s["name"])
+        if not existing and s.get("id"):
+            existing = existing_rel_schemas_by_id.get(s["id"])
         if existing:
             if _fields_match(existing.fields, imported_fields):
                 stats["skipped"] += 1

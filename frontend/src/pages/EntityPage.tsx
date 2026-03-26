@@ -79,6 +79,7 @@ export default function EntityPage() {
       queryClient.invalidateQueries({ queryKey: ['entity', id] });
       queryClient.invalidateQueries({ queryKey: ['entities'] });
       setEditingPerson(false);
+      setEditingExtras(false);
       setEditingNotes(false);
     },
   });
@@ -100,14 +101,47 @@ export default function EntityPage() {
       middle_name: meta.middle_name ?? '',
       dob: meta.dob ?? '',
     });
+    // Also init extras so all fields edit together
+    const structural = new Set(['first_name', 'last_name', 'middle_name', 'dob', 'photo', 'notes', '_board_notes', 'custom_icon']);
+    const schemaExtrasFields = (customSchema?.fields || []).filter((f: any) => !structural.has(f.name));
+    const extraEntries = Object.entries(meta).filter(([k]) => !structural.has(k));
+    const allExtraKeys = Array.from(new Set([...schemaExtrasFields.map((f: any) => f.name), ...extraEntries.map(([k]) => k)]));
+    const init: Record<string, string> = {};
+    allExtraKeys.forEach(k => { init[k] = String(meta[k] ?? ''); });
+    setExtrasEdits(init);
+    setEditingExtras(true);
     setEditingPerson(true);
   };
 
   const savePersonEdits = () => {
     const newMeta = { ...meta, ...personEdits };
+    // Also apply extras edits (unified save)
+    Object.entries(extrasEdits).forEach(([k, v]) => {
+      if (v) newMeta[k] = v; else delete newMeta[k];
+    });
     const parts = [newMeta.last_name, newMeta.first_name, newMeta.middle_name].filter(Boolean);
     const newValue = parts.join(' ') || entity.value;
     updateMutation.mutate({ value: newValue, metadata: newMeta });
+    // Auto-create relationships for entity/entities fields with is_relation=true
+    const structural = new Set(['first_name', 'last_name', 'middle_name', 'dob', 'photo', 'notes', '_board_notes', 'custom_icon']);
+    (customSchema?.fields || []).forEach((sf: any) => {
+      if (!sf.is_relation || structural.has(sf.name)) return;
+      const relType = sf.relation_type || 'linked_to';
+      const dir = sf.relation_direction || 'this_to_other';
+      const makeRel = (a: string, b: string) =>
+        addRelMutation.mutate({ source_entity_id: a, target_entity_id: b, type: relType });
+      if (sf.field_type === 'entity' && extrasEdits[sf.name] && extrasEdits[sf.name] !== String(meta[sf.name] || '')) {
+        if (dir === 'bidirectional') { makeRel(id!, extrasEdits[sf.name]); makeRel(extrasEdits[sf.name], id!); }
+        else { const src = dir === 'other_to_this' ? extrasEdits[sf.name] : id!; const tgt = dir === 'other_to_this' ? id! : extrasEdits[sf.name]; makeRel(src, tgt); }
+      } else if (sf.field_type === 'entities') {
+        const prev = String(meta[sf.name] || '').split(',').filter(Boolean);
+        const next = (extrasEdits[sf.name] || '').split(',').filter(Boolean);
+        next.filter((tid: string) => !prev.includes(tid)).forEach((tid: string) => {
+          if (dir === 'bidirectional') { makeRel(id!, tid); makeRel(tid, id!); }
+          else { makeRel(dir === 'other_to_this' ? tid : id!, dir === 'other_to_this' ? id! : tid); }
+        });
+      }
+    });
   };
 
   const handlePhotoUpload = (file: File) => {
@@ -230,7 +264,7 @@ export default function EntityPage() {
                 </div>
 
                 <button
-                  onClick={editingPerson ? () => setEditingPerson(false) : startEditPerson}
+                  onClick={editingPerson ? () => { setEditingPerson(false); setEditingExtras(false); } : startEditPerson}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs transition-all"
                   style={{ border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}
                 >
@@ -350,20 +384,7 @@ export default function EntityPage() {
                   <div className="border-t px-6 py-4" style={{ borderColor: 'var(--border)' }}>
                     <div className="flex items-center justify-between mb-3">
                       <div className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{t.ep_custom_fields}</div>
-                      {!editingExtras ? (
-                        <button onClick={startExtrasEdit} className="flex items-center gap-1 text-xs font-mono transition-colors" style={{ color: 'var(--accent)' }}>
-                          <Edit2 size={11} /> {lang === 'ru' ? 'Изменить' : 'Edit'}
-                        </button>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button onClick={saveExtras} disabled={updateMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 font-mono text-xs font-semibold rounded disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
-                            <Check size={10} /> {lang === 'ru' ? 'Сохранить' : 'Save'}
-                          </button>
-                          <button onClick={() => setEditingExtras(false)} className="px-2.5 py-1 font-mono text-xs rounded border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                            {lang === 'ru' ? 'Отмена' : 'Cancel'}
-                          </button>
-                        </div>
-                      )}
+                      {/* Buttons hidden for person — editing is unified via top "Редактировать" button */}
                     </div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                       {allKeys.map(k => {
@@ -432,7 +453,7 @@ export default function EntityPage() {
                               )
                             ) : (
                               <EntityFieldDisplay
-                                value={meta[k] ? String(meta[k]) : ''}
+                                value={meta[k] != null ? String(meta[k]) : ''}
                                 fieldType={ftype}
                                 entities={allEntities}
                                 schemas={schemas}
@@ -652,7 +673,7 @@ export default function EntityPage() {
                               )
                             ) : (
                               <EntityFieldDisplay
-                                value={meta[field.key] || ''}
+                                value={meta[field.key] != null ? String(meta[field.key]) : ''}
                                 fieldType={field.type}
                                 entities={allEntities}
                                 schemas={schemas}
@@ -1273,6 +1294,9 @@ function EntityFieldDisplay({
       </a>
     );
   }
+
+  // Default fallback: text, number, date, url, etc.
+  return <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{value}</span>;
 }
 
 // ── Inline entity picker for EntityPage edit mode ────────────────────────────
