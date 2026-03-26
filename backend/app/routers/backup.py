@@ -503,16 +503,17 @@ async def import_backup(
         try:
             db.execute(text("""
                 INSERT INTO entity_groups
-                    (id, user_id, name, description, entity_ids, created_at, updated_at)
-                VALUES (:id, :uid, :name, :desc, :eids, :ca, :ua)
+                    (id, user_id, name, description, entity_ids, is_imported, created_at, updated_at)
+                VALUES (:id, :uid, :name, :desc, :eids, :is_imported, :ca, :ua)
             """), {
-                "id":   actual_gid,
-                "uid":  user_id,
-                "name": g["name"],
-                "desc": g.get("description"),
-                "eids": json.dumps(remapped_eids),
-                "ca":   created_at,
-                "ua":   created_at,
+                "id":          actual_gid,
+                "uid":         user_id,
+                "name":        g["name"],
+                "desc":        g.get("description"),
+                "eids":        json.dumps(remapped_eids),
+                "is_imported": g.get("is_imported", False),
+                "ca":          created_at,
+                "ua":          created_at,
             })
             db.commit()
             stats["entity_groups"] += 1
