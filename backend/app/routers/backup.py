@@ -3,6 +3,7 @@ import json
 import zipfile
 import base64
 import re
+import uuid
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
@@ -252,9 +253,16 @@ async def import_backup(
             db.flush()
             stats["overwritten"] += 1
         else:
+            # Before inserting, check if this id exists globally (any user) — PK is global
+            schema_id = s.get("id") or str(uuid.uuid4())
+            if schema_id and db.query(models.EntityTypeSchema).filter(
+                models.EntityTypeSchema.id == schema_id
+            ).first():
+                # Id taken by another user's record — mint a fresh one
+                schema_id = str(uuid.uuid4())
             # Create even if is_builtin — it belongs to this user
             db.add(models.EntityTypeSchema(
-                id=s["id"],
+                id=schema_id,
                 user_id=user_id,
                 name=s["name"],
                 label_en=s["label_en"],
@@ -298,8 +306,13 @@ async def import_backup(
             db.flush()
             stats["overwritten"] += 1
         else:
+            rel_schema_id = s.get("id") or str(uuid.uuid4())
+            if rel_schema_id and db.query(models.RelationshipTypeSchema).filter(
+                models.RelationshipTypeSchema.id == rel_schema_id
+            ).first():
+                rel_schema_id = str(uuid.uuid4())
             db.add(models.RelationshipTypeSchema(
-                id=s["id"],
+                id=rel_schema_id,
                 user_id=user_id,
                 name=s["name"],
                 label_en=s["label_en"],
