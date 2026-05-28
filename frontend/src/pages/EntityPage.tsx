@@ -17,7 +17,7 @@ import MetadataEditor from '../components/ui/MetadataEditor';
 import MiniGraph from '../components/graph/MiniGraph';
 import DatePicker from '../components/ui/DatePicker';
 import MarkdownRenderer from '../components/ui/MarkdownRenderer';
-import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, X, Camera, User, Edit2, Check, LayoutDashboard, FileText, Paperclip, Download, ExternalLink, Search, Copy } from 'lucide-react';
 import { getAttachments, uploadAttachment, deleteAttachment, type AttachmentOut } from '../api';
 
 export default function EntityPage() {
@@ -41,6 +41,7 @@ export default function EntityPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState('');
   const [notesTab, setNotesTab] = useState<'write' | 'preview'>('write');
+  const [copiedId, setCopiedId] = useState(false);
 
   const { data: entity } = useQuery({
     queryKey: ['entity', id],
@@ -208,50 +209,68 @@ export default function EntityPage() {
           {isPerson ? (
             <div className="rounded-xl overflow-hidden" style={cardStyle}>
               <div className="p-6 flex items-start gap-5">
-                <div className="relative flex-shrink-0 group">
-                  <div
-                    className="w-20 h-20 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer"
-                    style={{ background: 'var(--border)', border: '1px solid var(--border-light)' }}
-                    onClick={() => photoRef.current?.click()}
-                  >
-                    {meta.photo
-                      ? <img src={meta.photo} alt="" className="w-full h-full object-cover" />
-                      : meta.custom_icon
-                        ? <span className="text-3xl">{meta.custom_icon}</span>
-                        : <User size={28} style={{ color: 'var(--text-muted)' }} />
-                    }
-                  </div>
-                  <div
-                    className="absolute inset-0 rounded-xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-                    onClick={() => photoRef.current?.click()}
-                  >
-                    <Camera size={16} className="text-white" />
-                  </div>
-                  <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                    onChange={e => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])} />
-                  {meta.photo && (
-                    <button
-                      onClick={removePhoto}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[var(--bg-card)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                <div className="flex-shrink-0 flex flex-col items-center gap-1.5">
+                  <div className="relative group">
+                    <div
+                      className="w-20 h-20 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer"
+                      style={{ background: 'var(--border)', border: '1px solid var(--border-light)' }}
+                      onClick={() => photoRef.current?.click()}
                     >
-                      <X size={10} className="text-white" />
-                    </button>
-                  )}
+                      {meta.photo
+                        ? <img src={meta.photo} alt="" className="w-full h-full object-cover" />
+                        : meta.custom_icon
+                          ? <span className="text-3xl">{meta.custom_icon}</span>
+                          : <User size={28} style={{ color: 'var(--text-muted)' }} />
+                      }
+                    </div>
+                    <div
+                      className="absolute inset-0 rounded-xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                      onClick={() => photoRef.current?.click()}
+                    >
+                      <Camera size={16} className="text-white" />
+                    </div>
+                    <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                      onChange={e => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])} />
+                    {meta.photo && (
+                      <button
+                        onClick={removePhoto}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#ff4444] border border-[var(--bg-card)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={10} className="text-white" />
+                      </button>
+                    )}
+                  </div>
                   {/* Emoji icon for person (when no photo) */}
                   {!meta.photo && (
-                    <div className="mt-1">
-                      <EntityIconPicker
-                        currentIcon={meta.custom_icon || ''}
-                        defaultIcon={''}
-                        onChange={icon => {
-                          const newMeta = { ...meta };
-                          if (icon) newMeta.custom_icon = icon; else delete newMeta.custom_icon;
-                          updateMutation.mutate({ metadata: newMeta });
-                        }}
-                        lang={lang}
-                      />
-                    </div>
+                    <EntityIconPicker
+                      currentIcon={meta.custom_icon || ''}
+                      defaultIcon={''}
+                      onChange={icon => {
+                        const newMeta = { ...meta };
+                        if (icon) newMeta.custom_icon = icon; else delete newMeta.custom_icon;
+                        updateMutation.mutate({ metadata: newMeta });
+                      }}
+                      lang={lang}
+                    />
                   )}
+                  {/* Copy ID button */}
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(entity.id);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 1800);
+                    }}
+                    title={entity.id}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] transition-all w-20 justify-center"
+                    style={{
+                      border: '1px solid var(--border-light)',
+                      color: copiedId ? 'var(--accent)' : 'var(--text-muted)',
+                      background: 'transparent',
+                    }}
+                  >
+                    {copiedId ? <Check size={10} /> : <Copy size={10} />}
+                    {copiedId ? t.ep_copy_id_done : t.ep_copy_id}
+                  </button>
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -512,6 +531,25 @@ export default function EntityPage() {
                         lang={lang}
                       />
                     )}
+                    {/* Copy ID button */}
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(entity.id);
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 1800);
+                      }}
+                      title={entity.id}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] transition-all w-20 justify-center"
+                      style={{
+                        border: '1px solid var(--border-light)',
+                        color: copiedId ? 'var(--accent)' : 'var(--text-muted)',
+                        background: 'transparent',
+                      }}
+                    >
+                      {copiedId ? <Check size={10} /> : <Copy size={10} />}
+                      {copiedId ? t.ep_copy_id_done : t.ep_copy_id}
+                    </button>
                   </div>
                   <div>
                     <EntityTypeBadge type={entity.type} />

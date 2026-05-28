@@ -45,6 +45,8 @@ export const translations = {
     // Entity page
     ep_back: 'Back',
     ep_id: 'ID',
+    ep_copy_id: 'Copy ID',
+    ep_copy_id_done: 'Copied!',
     ep_added: 'Added',
     ep_metadata: 'Metadata',
     ep_meta_edit: 'Edit',
@@ -274,6 +276,8 @@ export const translations = {
     // Entity page
     ep_back: 'Назад',
     ep_id: 'ID',
+    ep_copy_id: 'Скопировать ID',
+    ep_copy_id_done: 'Скопировано!',
     ep_added: 'Добавлено',
     ep_metadata: 'Метаданные',
     ep_meta_edit: 'Редактировать',
