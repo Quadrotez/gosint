@@ -1,7 +1,9 @@
 import json
 import os
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import text, inspect
 from .database import engine
 from . import models
@@ -13,6 +15,14 @@ from .routers import entity_groups as entity_groups_router
 from .routers import open_search as open_search_router
 from .auth import hash_password
 from .encryption import generate_salt
+
+# Frontend static assets: embedded in the packaged desktop app (PyInstaller)
+# or placed into backend/static during a local production build.
+if getattr(sys, "frozen", False):
+    _static_dir = os.path.join(sys._MEIPASS, "static")
+else:
+    _static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
+_has_static = os.path.isdir(_static_dir)
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -197,6 +207,17 @@ for router in [auth_router.router, admin_router.router, entities.router, relatio
     app.include_router(router, prefix="/api")
 
 
+if _has_static:
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        file_path = os.path.join(_static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(_static_dir, "index.html"))
+
+
 @app.get("/")
 def root():
+    if _has_static:
+        return FileResponse(os.path.join(_static_dir, "index.html"))
     return {"status": "ok", "version": "3.2.0"}

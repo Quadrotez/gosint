@@ -171,7 +171,7 @@ def update_db_config(
     # Save pending URL — will be applied on next restart via DATABASE_URL env
     url = body.database_url.strip()
     s.database_url = url or None
-    # Also write to .env.db file next to main.py so run.sh can pick it up
+    # Also write to .env.db file next to main.py so it can be picked up on next start
     env_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), ".env.db")
     if url:
         with open(env_path, "w") as f:

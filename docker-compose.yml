@@ -1,0 +1,25 @@
+name: osint-platform
+
+services:
+  backend:
+    build: ./backend
+    image: osint-platform-backend:latest
+    environment:
+      DATABASE_URL: sqlite:////data/gosint.db
+      SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+    volumes:
+      - ./backend/data:/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    image: osint-platform-frontend:latest
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

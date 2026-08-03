@@ -58,7 +58,8 @@ osintgraphtool/
 │       ├── store/         # Zustand store
 │       └── types/         # TypeScript типы
 │
-└── run.sh                 # Скрипт запуска
+└── docker-compose.yml     # Запуск через Docker Compose
+└── build.sh               # Сборка настольных приложений (AppImage / exe)
 ```
 
 **Стек технологий:**
@@ -70,38 +71,51 @@ osintgraphtool/
 
 ## 🚀 Быстрый старт / Quick Start
 
-### Требования
-- Python 3.9+
-- Node.js 18+
+### Docker Compose (сервер)
 
-### Запуск одной командой
+Требования: Docker 24+ с Docker Compose v2.
 
 ```bash
 cd osintgraphtool
-chmod +x run.sh
-./run.sh
+docker compose up -d      # собрать и запустить backend + frontend
 ```
 
-Открывает:
-- 🌐 Приложение: http://localhost:5173
+- 🌐 Приложение: http://localhost:8080
 - ⚙️ API: http://localhost:8000
 - 📖 Документация API: http://localhost:8000/docs
 
-### Продакшн-режим
+Порты можно переопределить через переменные окружения:
+`BACKEND_PORT=8000`, `APP_PORT=8080`.
+
+Данные (SQLite) хранятся в `backend/data/gosint.db` и сохраняются между запусками.
 
 ```bash
-./run.sh --prod
-# Собирает фронтенд и отдаёт через бэкенд на одном порту 8000
+echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
 ```
 
-### Параметры run.sh
+### Настольные приложения (Desktop)
 
-| Флаг | Описание |
-|------|----------|
-| `--build` | Собрать фронтенд перед запуском |
-| `--prod` | Продакшн: сборка + сервис на одном порту |
-| `--port=PORT` | Порт бэкенда (по умолчанию 8000) |
-| `FRONTEND_PORT=X` | Порт фронтенда (по умолчанию 5173) |
+Требования: python3, node/npm, для `exe` дополнительно wine.
+
+```bash
+./build.sh                     # собрать AppImage + exe в build/
+./build.sh --appimage          # только AppImage (Linux)
+./build.sh --exe               # только exe (Windows)
+./build.sh --version=3.4.0     # задать версию в имени файла
+./build.sh --clean             # очистить build/
+```
+
+Результат:
+- `build/OSINT-Graph-Platform-<VERSION>-x86_64.AppImage`
+- `build/OSINT-Graph-Platform-<VERSION>-win64.exe`
+
+**Портативный режим:** всё (SQLite-база `gosint.db`, логи, профиль браузера)
+пишется в ту же папку, где лежит исполняемый файл — приложение можно носить
+с собой на флешке.
+
+При запуске приложение поднимает локальный сервер и открывает окно
+в режиме приложения (Chromium/Chrome `--app`). Если браузера нет — откроется
+браузер по умолчанию.
 
 ### Ручной запуск
 

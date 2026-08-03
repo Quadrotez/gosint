@@ -1,9 +1,19 @@
 import os
 
+from sqlalchemy.engine.url import URL
+from .portable import portable_dir
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_db_dir = os.path.join(_HERE, "..", "data")
+
+_pdata = portable_dir()
+if _pdata:
+    _db_dir = _pdata
+else:
+    _db_dir = os.path.join(_HERE, "..", "data")
 os.makedirs(_db_dir, exist_ok=True)
-_default_url = f"sqlite:///{os.path.join(_db_dir, 'gosint.db')}"
+
+_db_path = os.path.join(_db_dir, "gosint.db")
+_default_url = str(URL.create(drivername="sqlite", database=_db_path))
 
 # Allow override via env var or .env.db file next to this package
 _env_db_file = os.path.join(_HERE, ".env.db")
